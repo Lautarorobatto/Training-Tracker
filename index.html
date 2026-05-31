@@ -5200,6 +5200,523 @@ function init() {
 
 function saveS()  { localStorage.setItem(SK, JSON.stringify(sessions));    gdriveSave(); }
 function saveW()  { localStorage.setItem(WK, JSON.stringify(weightLog));   gdriveSave(); }
+
+function saveWeight(){
+  const date=document.getElementById('wt-date').value;
+  if(!date){toast('⚠ Select a date');return;}
+  const morning=parseFloat(document.getElementById('wt-morning').value)||null;
+  const evening=parseFloat(document.getElementById('wt-evening').value)||null;
+  if(!morning&&!evening){toast('⚠ Enter at least one weight');return;}
+
+  const existing=weightLog.find(e=>e.date===date);
+  const conflicts=[];
+  if(existing&&morning!==null&&existing.morning!==null) conflicts.push(`Wake-Up: existing value is ${existing.morning.toFixed(1)} kg, new value is ${morning.toFixed(1)} kg`);
+  if(existing&&evening!==null&&existing.evening!==null) conflicts.push(`Bedtime: existing value is ${existing.evening.toFixed(1)} kg, new value is ${evening.toFixed(1)} kg`);
+
+  if(conflicts.length>0){
+    const d=new Date(date+'T12:00:00');
+    const label=d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+    showWeightConflictModal(label, conflicts, ()=>commitWeight(date,morning,evening,existing));
+    return;
+  }
+  commitWeight(date,morning,evening,existing);
+}
+
+function commitWeight(date,morning,evening,existing){
+  const notes=document.getElementById('wt-notes').value;
+  // Merge: keep existing values for fields the user left blank
+  const mergedMorning = morning!==null ? morning : (existing?.morning??null);
+  const mergedEvening = evening!==null ? evening : (existing?.evening??null);
+  const mergedNotes   = notes || existing?.notes || '';
+  weightLog=weightLog.filter(e=>e.date!==date);
+  weightLog.push({date,morning:mergedMorning,evening:mergedEvening,notes:mergedNotes});
+  weightLog.sort((a,b)=>a.date.localeCompare(b.date));
+  saveW();
+  document.getElementById('wt-morning').value='';
+  document.getElementById('wt-evening').value='';
+  document.getElementById('wt-notes').value='';
+  renderWeightPanel();
+  toast('✓ Weight saved');
+}
+
+function showWeightConflictModal(label, conflicts, onConfirm){
+  document.getElementById('wt-modal-title').textContent='Existing weigh-in detected';
+  document.getElementById('wt-modal-date').textContent=label;
+  document.getElementById('wt-modal-conflicts').innerHTML=conflicts.map(c=>`<div class="modal-conflict-row">⚠ ${c}</div>`).join('');
+  document.getElementById('wt-modal-question').textContent='The value(s) above will be overwritten. Do you want to proceed?';
+  document.getElementById('wt-modal-confirm').textContent='Overwrite';
+  document.getElementById('wt-modal').style.display='flex';
+  document.getElementById('wt-modal-confirm').onclick=()=>{
+    document.getElementById('wt-modal').style.display='none';
+    onConfirm();
+  };
+  document.getElementById('wt-modal-cancel').onclick=()=>{
+    document.getElementById('wt-modal').style.display='none';
+  };
+}
+
+function computeWeightStats(){
+  const sorted=[...weightLog].sort((a,b)=>a.date.localeCompare(b.date));
+  return sorted.map((e,i)=>{
+    const prev=i>0?sorted[i-1]:null;
+    const deltaM=prev&&e.morning&&prev.morning?+(e.morning-prev.morning).toFixed(1):null;
+    const deltaE=prev&&e.evening&&prev.evening?+(e.evening-prev.evening).toFixed(1):null;
+    const deltaAmPm=e.morning&&e.evening?+(e.evening-e.morning).toFixed(1):null;
+    // 7-day rolling avg of morning
+    const window=sorted.slice(Math.max(0,i-6),i+1).filter(x=>x.morning);
+    const avg7=window.length?+(window.reduce((a,x)=>a+x.morning,0)/window.length).toFixed(2):null;
+    // 7-day rolling avg of evening
+    const windowE=sorted.slice(Math.max(0,i-6),i+1).filter(x=>x.evening);
+    const avg7evening=windowE.length?+(windowE.reduce((a,x)=>a+x.evening,0)/windowE.length).toFixed(2):null;
+    return {...e,deltaM,deltaE,deltaAmPm,avg7,avg7evening};
+  });
+}
+
+function updateChartDateBounds(){
+  if(!weightLog.length) return;
+  const sorted=[...weightLog].map(e=>e.date).sort();
+  const minDate=sorted[0];
+  const maxDate=sorted[sorted.length-1];
+  ['trend','avg','var','vare'].forEach(k=>{
+    const fromEl=document.getElementById(`cd-${k}-from`);
+    const toEl=document.getElementById(`cd-${k}-to`);
+    if(fromEl){fromEl.min=minDate;fromEl.max=maxDate;}
+    if(toEl){toEl.min=minDate;toEl.max=maxDate;}
+  });
+}
+
+function setChartDateRange(chart){
+  const fromEl=document.getElementById(`cd-${chart}-from`);
+  const toEl=document.getElementById(`cd-${chart}-to`);
+  let from=fromEl?.value||'';
+  let to=toEl?.value||'';
+  // Auto-set to = today if from is set and to is empty
+  if(from&&!to){
+    const today=new Date().toISOString().split('T')[0];
+    to=today;
+    if(toEl){toEl.value=today;toEl.classList.add('cd-active');}
+  }
+  // Cross-field constraint: from max = to value; to min = from value
+  if(fromEl&&to) fromEl.max=to;
+  if(toEl&&from) toEl.min=from;
+  wtDateFrom[chart]=from;
+  wtDateTo[chart]=to;
+  fromEl?.classList.toggle('cd-active',!!from);
+  if(to) toEl?.classList.add('cd-active');
+  if(from||to){
+    document.querySelectorAll(`.wt-${chart}-tab`).forEach(t=>t.classList.remove('active'));
+  }
+  if(chart==='trend') renderChartTrend();
+  else if(chart==='avg') renderChartAvg();
+  else if(chart==='var') renderChartVar();
+  else renderChartVarE();
+}
+
+function setChartRange(chart,n,el){
+  wtDateFrom[chart]=''; wtDateTo[chart]='';
+  const fromEl=document.getElementById(`cd-${chart}-from`);
+  const toEl=document.getElementById(`cd-${chart}-to`);
+  if(fromEl){fromEl.value='';fromEl.classList.remove('cd-active');}
+  if(toEl){toEl.value='';toEl.classList.remove('cd-active');}
+  // Reset cross-field constraints back to data bounds
+  updateChartDateBounds();
+  if(chart==='trend'){
+    wtRange=n;
+    document.querySelectorAll('.wt-trend-tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+    renderChartTrend();
+  } else if(chart==='avg'){
+    wtRangeAvg=n;
+    document.querySelectorAll('.wt-avg-tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+    renderChartAvg();
+  } else if(chart==='var'){
+    wtRangeVar=n;
+    document.querySelectorAll('.wt-var-tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+    renderChartVar();
+  } else {
+    wtRangeVarE=n;
+    document.querySelectorAll('.wt-vare-tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+    renderChartVarE();
+  }
+}
+
+function renderWeightPanel(){
+  const stats=computeWeightStats();
+  updateChartDateBounds();
+  // Set bounds on weight log filter date inputs
+  const today=new Date().toISOString().split('T')[0];
+  const fromEl=document.getElementById('wt-filter-from');
+  const toEl=document.getElementById('wt-filter-to');
+  if(weightLog.length){
+    const sorted=[...weightLog].map(e=>e.date).sort();
+    const minD=sorted[0];
+    if(fromEl){fromEl.min=minD;fromEl.max=today;}
+    if(toEl){toEl.min=minD;toEl.max=today;}
+  }
+  renderWeightMetrics(stats);
+  renderWeightCharts();
+  renderWeightTable(stats);
+  renderStreak(stats);
+}
+
+function renderStreak(stats){
+  const loggedDates=new Set(weightLog.map(e=>e.date));
+  const today=new Date();
+  today.setHours(0,0,0,0);
+  let streak=0;
+  let cursor=new Date(today);
+  // If today has no entry yet, start checking from yesterday
+  const todayStr=cursor.toISOString().split('T')[0];
+  if(!loggedDates.has(todayStr)) cursor.setDate(cursor.getDate()-1);
+  while(true){
+    const dateStr=cursor.toISOString().split('T')[0];
+    if(loggedDates.has(dateStr)){
+      streak++;
+      cursor.setDate(cursor.getDate()-1);
+    } else {
+      break;
+    }
+  }
+  document.getElementById('streak-num').textContent=streak;
+}
+
+let wtTcFrom='';
+let wtTcTo='';
+
+function setTcDateRange(){
+  const fromEl=document.getElementById('tc-from');
+  const toEl=document.getElementById('tc-to');
+  let from=fromEl?.value||'';
+  let to=toEl?.value||'';
+  // Auto-set to = last data date if from is set and to is empty
+  if(from&&!to){
+    const sorted=[...weightLog].map(e=>e.date).sort();
+    to=sorted[sorted.length-1];
+    if(toEl){toEl.value=to;toEl.classList.add('cd-active');}
+  }
+  // Cross-field constraint
+  if(fromEl&&to) fromEl.max=to;
+  if(toEl&&from) toEl.min=from;
+  fromEl?.classList.toggle('cd-active',!!from&&from!==fromEl.getAttribute('data-default'));
+  if(to&&to!==toEl?.getAttribute('data-default')) toEl?.classList.add('cd-active');
+  wtTcFrom=from;
+  wtTcTo=to;
+  renderWeightMetrics(computeWeightStats());
+}
+
+function resetTcDates(){
+  const sorted=[...weightLog].filter(e=>e.morning!=null).map(e=>e.date).sort();
+  if(!sorted.length) return;
+  const minD=sorted[0], maxD=sorted[sorted.length-1];
+  const fromEl=document.getElementById('tc-from');
+  const toEl=document.getElementById('tc-to');
+  if(fromEl){fromEl.value=minD;fromEl.classList.remove('cd-active');}
+  if(toEl){toEl.value=maxD;toEl.classList.remove('cd-active');}
+  wtTcFrom=minD; wtTcTo=maxD;
+  renderWeightMetrics(computeWeightStats());
+}
+
+function renderWeightMetrics(stats){
+  if(!stats.length){document.getElementById('wt-metrics').innerHTML='';return;}
+  const mornings=stats.filter(s=>s.morning!=null).map(s=>({v:s.morning,d:s.date}));
+  const evenings=stats.filter(s=>s.evening!=null).map(s=>({v:s.evening,d:s.date}));
+  const current=stats[stats.length-1];
+  const avg7=current.avg7;
+
+  // Total Change date range — default to first/last morning entry
+  const allMDates=mornings.map(m=>m.d).sort();
+  const defaultFrom=allMDates[0]||'';
+  const defaultTo=allMDates[allMDates.length-1]||'';
+  if(!wtTcFrom) wtTcFrom=defaultFrom;
+  if(!wtTcTo)   wtTcTo=defaultTo;
+  const tcFromEntry=mornings.find(m=>m.d>=wtTcFrom);
+  const tcToEntry=[...mornings].reverse().find(m=>m.d<=wtTcTo);
+  const totalDelta=tcFromEntry&&tcToEntry?+(tcToEntry.v-tcFromEntry.v).toFixed(1):null;
+
+  const minMObj=mornings.length?mornings.reduce((a,b)=>b.v<a.v?b:a):null;
+  const maxMObj=mornings.length?mornings.reduce((a,b)=>b.v>a.v?b:a):null;
+  const minEObj=evenings.length?evenings.reduce((a,b)=>b.v<a.v?b:a):null;
+  const maxEObj=evenings.length?evenings.reduce((a,b)=>b.v>a.v?b:a):null;
+
+  const deltaColor=v=>v===null?'':v>0?'color:var(--red)':v<0?'color:var(--green)':'color:var(--text3)';
+  const fmtShort=d=>{if(!d)return'?';const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});};
+  const tcFromActive=wtTcFrom&&wtTcFrom!==defaultFrom;
+  const tcToActive=wtTcTo&&wtTcTo!==defaultTo;
+
+  document.getElementById('wt-metrics').innerHTML=`
+    <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr 1fr 2fr;gap:12px;align-items:stretch">
+      <!-- Left: 3 tall summary cards that stretch to fill full height of the 2x2 grid -->
+      <div class="metric-card" style="border-top:2px solid #f5a623;display:flex;flex-direction:column;justify-content:center">
+        <div class="metric-label" style="font-size:12px;margin-bottom:8px">Current Wake-Up</div>
+        <div class="metric-value" style="color:#fff">${current.morning!=null?parseFloat(current.morning).toFixed(1):'—'}<span style="font-size:14px">kg</span></div>
+        <div class="metric-sub" style="font-size:11px;margin-top:6px">${fmtShort(current.date)}</div>
+      </div>
+      <div class="metric-card" style="border-top:2px solid var(--accent);display:flex;flex-direction:column;justify-content:center">
+        <div class="metric-label" style="font-size:12px;margin-bottom:8px">7-Day Avg</div>
+        <div class="metric-value" style="color:#fff">${avg7!=null?parseFloat(avg7).toFixed(1):'—'}<span style="font-size:14px">kg</span></div>
+        <div class="metric-sub" style="font-size:11px;margin-top:6px">Rolling average</div>
+      </div>
+      <div class="metric-card" style="border-top:2px solid var(--text3);display:flex;flex-direction:column;justify-content:center">
+        <div class="metric-label" style="font-size:12px;margin-bottom:6px">Total Change</div>
+        <div class="metric-value" style="${deltaColor(totalDelta)}">${totalDelta!=null?(totalDelta>0?'+':'')+parseFloat(totalDelta).toFixed(1):'—'}<span style="font-size:14px">kg</span></div>
+        <div style="display:flex;align-items:center;gap:4px;margin-top:8px;flex-wrap:wrap">
+          <input type="date" id="tc-from" class="cd-date ${tcFromActive?'cd-active':''}" style="font-size:9px;padding:2px 5px;width:100px;color-scheme:dark" value="${wtTcFrom}" min="${defaultFrom}" max="${wtTcTo||defaultTo}" data-default="${defaultFrom}" onchange="setTcDateRange()">
+          <span style="font-size:9px;color:var(--text3)">→</span>
+          <input type="date" id="tc-to" class="cd-date ${tcToActive?'cd-active':''}" style="font-size:9px;padding:2px 5px;width:100px;color-scheme:dark" value="${wtTcTo}" min="${wtTcFrom||defaultFrom}" max="${defaultTo}" data-default="${defaultTo}" onchange="setTcDateRange()">
+        </div>
+      </div>
+      <!-- Right: 2x2 grid — smaller cards with scaled-down text -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:8px">
+        <div class="metric-card" style="border-top:2px solid #4ade80;margin:0;padding:10px 12px">
+          <div style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:4px">All-Time Lowest Wake-Up</div>
+          <div style="font-size:14px;font-weight:600;font-family:var(--mono);color:#fff;line-height:1">${minMObj?parseFloat(minMObj.v).toFixed(1):'—'}<span style="font-size:8px">kg</span></div>
+          <div style="font-size:10px;color:var(--text2);margin-top:3px">${minMObj?fmtShort(minMObj.d):'—'}</div>
+        </div>
+        <div class="metric-card" style="border-top:2px solid #f97316;margin:0;padding:10px 12px">
+          <div style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:4px">All-Time Highest Wake-Up</div>
+          <div style="font-size:14px;font-weight:600;font-family:var(--mono);color:#fff;line-height:1">${maxMObj?parseFloat(maxMObj.v).toFixed(1):'—'}<span style="font-size:8px">kg</span></div>
+          <div style="font-size:10px;color:var(--text2);margin-top:3px">${maxMObj?fmtShort(maxMObj.d):'—'}</div>
+        </div>
+        <div class="metric-card" style="border-top:2px solid #4ade80;margin:0;padding:10px 12px">
+          <div style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:4px">All-Time Lowest Bedtime</div>
+          <div style="font-size:14px;font-weight:600;font-family:var(--mono);color:#fff;line-height:1">${minEObj?parseFloat(minEObj.v).toFixed(1):'—'}<span style="font-size:8px">kg</span></div>
+          <div style="font-size:10px;color:var(--text2);margin-top:3px">${minEObj?fmtShort(minEObj.d):'—'}</div>
+        </div>
+        <div class="metric-card" style="border-top:2px solid #f97316;margin:0;padding:10px 12px">
+          <div style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:4px">All-Time Highest Bedtime</div>
+          <div style="font-size:14px;font-weight:600;font-family:var(--mono);color:#fff;line-height:1">${maxEObj?parseFloat(maxEObj.v).toFixed(1):'—'}<span style="font-size:8px">kg</span></div>
+          <div style="font-size:10px;color:var(--text2);margin-top:3px">${maxEObj?fmtShort(maxEObj.d):'—'}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function getStats(){ return computeWeightStats(); }
+function sliceStats(stats,range,chartKey){
+  let data = range>0 ? stats.slice(-range) : stats;
+  const from=wtDateFrom[chartKey]||'';
+  const to=wtDateTo[chartKey]||'';
+  if(from||to){
+    data=stats; // custom date overrides range
+    if(from) data=data.filter(d=>d.date>=from);
+    if(to)   data=data.filter(d=>d.date<=to);
+  }
+  return data;
+}
+function pr(range){ return range===0||range>=90?0:3; }
+
+function renderChartTrend(){
+  const data=sliceStats(getStats(),wtRange,'trend');
+  const labels=data.map(d=>{const dt=new Date(d.date+'T12:00:00');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});});
+  const mornings=data.map(d=>d.morning);
+  const evenings=data.map(d=>d.evening);
+  const ctx=document.getElementById('wt-chart')?.getContext('2d');
+  if(!ctx) return;
+  if(wtChartInst) wtChartInst.destroy();
+  const ptR=pr(wtRange);
+  wtChartInst=new Chart(ctx,{type:'line',data:{labels,datasets:[
+    {label:'Wake-Up',data:mornings,borderColor:'#f5a623',backgroundColor:'rgba(245,166,35,0.06)',pointBackgroundColor:'#f5a623',pointRadius:ptR,pointHoverRadius:ptR?5:3,tension:.3,fill:true,borderWidth:2},
+    {label:'Bedtime',data:evenings,borderColor:'#6c8ebf',backgroundColor:'rgba(108,142,191,0.04)',pointBackgroundColor:'#6c8ebf',pointRadius:ptR,pointHoverRadius:ptR?5:3,tension:.3,borderWidth:2}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#555',font:{size:11},usePointStyle:true,pointStyle:'line',boxWidth:20}},tooltip:{callbacks:{label:c=>`${c.dataset.label} (kg): ${c.parsed.y.toFixed(1)}`}}},scales:{y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#555',font:{size:11}}},x:{grid:{display:false},ticks:{color:'#555',font:{size:10},maxTicksLimit:8}}}}});
+}
+
+function renderChartAvg(){
+  const data=sliceStats(getStats(),wtRangeAvg,'avg');
+  const labels=data.map(d=>{const dt=new Date(d.date+'T12:00:00');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});});
+  const avgs=data.map(d=>d.avg7);
+  const avgsE=data.map(d=>d.avg7evening);
+  const ctx=document.getElementById('wt-avg-chart')?.getContext('2d');
+  if(!ctx) return;
+  if(wtAvgInst) wtAvgInst.destroy();
+  const ptR=pr(wtRangeAvg);
+  wtAvgInst=new Chart(ctx,{type:'line',data:{labels,datasets:[
+    {label:'7-Day Avg Wake-Up',data:avgs,borderColor:'#f5a623',backgroundColor:'rgba(245,166,35,0.06)',pointBackgroundColor:'#f5a623',pointRadius:ptR,pointHoverRadius:ptR?5:3,tension:.4,fill:false,borderWidth:2},
+    {label:'7-Day Avg Bedtime',data:avgsE,borderColor:'#6c8ebf',backgroundColor:'rgba(108,142,191,0.04)',pointBackgroundColor:'#6c8ebf',pointRadius:ptR,pointHoverRadius:ptR?5:3,tension:.4,fill:false,borderWidth:2}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#555',font:{size:11},padding:16,usePointStyle:true,pointStyle:'line',boxWidth:20}},tooltip:{callbacks:{label:c=>`${c.dataset.label} (kg): ${c.parsed.y.toFixed(1)}`}}},scales:{y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#555',font:{size:11}}},x:{grid:{display:false},ticks:{color:'#555',font:{size:10},maxTicksLimit:8}}}}});
+}
+
+function renderChartVar(){
+  const data=sliceStats(getStats(),wtRangeVar,'var');
+  const labels=data.map(d=>{const dt=new Date(d.date+'T12:00:00');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});});
+  const deltas=data.map(d=>d.deltaM);
+  const ctx=document.getElementById('wt-var-chart')?.getContext('2d');
+  if(!ctx) return;
+  if(wtVarInst) wtVarInst.destroy();
+  wtVarInst=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label:'Δ Wake-Up',data:deltas,backgroundColor:deltas.map(v=>v===null?'transparent':v>0?'rgba(255,68,68,0.7)':v<0?'rgba(0,204,102,0.7)':'rgba(85,85,85,0.5)'),borderRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`Δ Wake-Up (kg): ${c.parsed.y.toFixed(1)}`}}},scales:{y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#555',font:{size:10}}},x:{grid:{display:false},ticks:{color:'#555',font:{size:10},maxTicksLimit:8}}}}});
+}
+
+function renderChartVarE(){
+  const data=sliceStats(getStats(),wtRangeVarE,'vare');
+  const labels=data.map(d=>{const dt=new Date(d.date+'T12:00:00');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});});
+  const deltasE=data.map(d=>d.deltaE);
+  const ctx=document.getElementById('wt-vare-chart')?.getContext('2d');
+  if(!ctx) return;
+  if(typeof wtVareInst!=='undefined'&&wtVareInst) wtVareInst.destroy();
+  wtVareInst=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label:'Δ Bedtime',data:deltasE,backgroundColor:deltasE.map(v=>v===null?'transparent':v>0?'rgba(255,68,68,0.7)':v<0?'rgba(0,204,102,0.7)':'rgba(85,85,85,0.5)'),borderRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`Δ Bedtime (kg): ${c.parsed.y.toFixed(1)}`}}},scales:{y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#555',font:{size:10}}},x:{grid:{display:false},ticks:{color:'#555',font:{size:10},maxTicksLimit:8}}}}});
+}
+
+function renderWeightCharts(){
+  renderChartTrend();
+  renderChartAvg();
+  renderChartVar();
+  renderChartVarE();
+}
+
+function sortWeightTable(col){
+  if(wtSortCol===col) wtSortDir=wtSortDir==='asc'?'desc':'asc';
+  else{wtSortCol=col;wtSortDir='desc';}
+  // Update arrow indicators
+  document.querySelectorAll('.sort-arrow').forEach(el=>{el.classList.remove('active');el.textContent='↕';});
+  const arrow=document.getElementById(`wt-sa-${col}`);
+  if(arrow){arrow.classList.add('active');arrow.textContent=wtSortDir==='asc'?'↑':'↓';}
+  // Re-render with current stats (don't recompute — just re-display)
+  renderWeightTable(computeWeightStats());
+}
+
+function applyWeightTableFilters(){
+  const fromEl=document.getElementById('wt-filter-from');
+  const toEl=document.getElementById('wt-filter-to');
+  let from=fromEl?.value||'';
+  let to=toEl?.value||'';
+  // Auto-set to = today if from set and to empty
+  if(from&&!to){
+    const today=new Date().toISOString().split('T')[0];
+    to=today;
+    if(toEl){toEl.value=today;toEl.classList.add('cd-active');}
+  }
+  // Cross-field constraints
+  if(fromEl&&to) fromEl.max=to;
+  if(toEl&&from) toEl.min=from;
+  fromEl?.classList.toggle('cd-active',!!from);
+  if(to) toEl?.classList.add('cd-active');
+  wtFilterFrom=from;
+  wtFilterTo=to;
+  wtFilterNotes=document.getElementById('wt-filter-notes').value.toLowerCase()||'';
+  renderWeightTable(computeWeightStats());
+}
+
+function clearWeightTableFilters(){
+  const fromEl=document.getElementById('wt-filter-from');
+  const toEl=document.getElementById('wt-filter-to');
+  wtFilterFrom='';wtFilterTo='';wtFilterNotes='';
+  wtSortCol='date';wtSortDir='desc';
+  if(fromEl){fromEl.value='';fromEl.classList.remove('cd-active');fromEl.removeAttribute('max');}
+  if(toEl){toEl.value='';toEl.classList.remove('cd-active');toEl.removeAttribute('min');}
+  // Re-apply data bounds
+  if(weightLog.length){
+    const sorted=[...weightLog].map(e=>e.date).sort();
+    if(fromEl){fromEl.min=sorted[0];fromEl.max=sorted[sorted.length-1];}
+    if(toEl){toEl.min=sorted[0];toEl.max=sorted[sorted.length-1];}
+  }
+  document.getElementById('wt-filter-notes').value='';
+  document.querySelectorAll('.sort-arrow').forEach(el=>{el.classList.remove('active');el.textContent='↕';});
+  const a=document.getElementById('wt-sa-date');if(a){a.classList.add('active');a.textContent='↓';}
+  renderWeightTable(computeWeightStats());
+}
+
+function renderWeightTable(stats){
+  // Filter — operates on display only, does not affect stats used for calculations
+  let rows=[...stats];
+  if(wtFilterFrom) rows=rows.filter(r=>r.date>=wtFilterFrom);
+  if(wtFilterTo)   rows=rows.filter(r=>r.date<=wtFilterTo);
+  if(wtFilterNotes) rows=rows.filter(r=>(r.notes||'').toLowerCase().includes(wtFilterNotes));
+
+  // Sort
+  rows.sort((a,b)=>{
+    let av=a[wtSortCol]??null, bv=b[wtSortCol]??null;
+    if(wtSortCol==='date'){av=a.date;bv=b.date;}
+    if(av===null&&bv===null) return 0;
+    if(av===null) return 1;
+    if(bv===null) return -1;
+    const cmp = av<bv?-1:av>bv?1:0;
+    return wtSortDir==='asc'?cmp:-cmp;
+  });
+
+  const body=document.getElementById('wt-log-body');
+  if(!rows.length){body.innerHTML=`<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No weigh-ins recorded yet. Start tracking to see your progress here.</td></tr>`;return;}
+  body.innerHTML=rows.map(r=>{
+    const fmt=v=>v!=null?parseFloat(v).toFixed(1):'—';
+    const dc=v=>v===null?'—':v>0?`<span class="val-pos">+${parseFloat(v).toFixed(1)}</span>`:v<0?`<span class="val-neg">${parseFloat(v).toFixed(1)}</span>`:`<span class="val-neu">0.0</span>`;
+    const ampm=r.deltaAmPm;
+    const ampmCell=ampm!==null?(ampm>=0?`<span class="val-pos">+${parseFloat(ampm).toFixed(1)}</span>`:`<span class="val-neg">${parseFloat(ampm).toFixed(1)}</span>`):'—';
+    const d=new Date(r.date+'T12:00:00');
+    const day=String(d.getDate()).padStart(2,'0');
+    const month=d.toLocaleDateString('en-US',{month:'short'});
+    const year=d.getFullYear();
+    const weekday=d.toLocaleDateString('en-US',{weekday:'short'});
+    const dateStr=`${weekday}, ${month} ${day}, ${year}`;
+    return `<tr>
+      <td>${dateStr}</td>
+      <td>${fmt(r.morning)}</td>
+      <td>${fmt(r.evening)}</td>
+      <td>${dc(r.deltaM)}</td>
+      <td>${dc(r.deltaE)}</td>
+      <td>${ampmCell}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:#f5a623">${r.avg7!=null?parseFloat(r.avg7).toFixed(1):'—'}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:#6c8ebf">${r.avg7evening!=null?parseFloat(r.avg7evening).toFixed(1):'—'}</td>
+      <td class="td-notes">${r.notes||''}</td>
+      <td><button class="btn-danger" data-date="${r.date}" onclick="deleteWeight(this)">×</button></td>
+      <td><button style="background:transparent;border:none;cursor:pointer;color:var(--text3);padding:4px;display:inline-flex;align-items:center" data-date="${r.date}" onclick="editWeight(this)" title="Edit record"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button></td>
+    </tr>`;
+  }).join('');
+}
+
+function editWeight(btn){
+  const date=btn.dataset.date;
+  const entry=weightLog.find(e=>e.date===date);
+  if(!entry) return;
+  const d=new Date(date+'T12:00:00');
+  const day=String(d.getDate()).padStart(2,'0');
+  const month=d.toLocaleDateString('en-US',{month:'short'});
+  const year=d.getFullYear();
+  const weekday=d.toLocaleDateString('en-US',{weekday:'long'});
+  document.getElementById('wt-edit-date').textContent=`${weekday}, ${month} ${day}, ${year}`;
+  document.getElementById('wt-edit-key').value=date;
+  document.getElementById('wt-edit-morning').value=entry.morning!=null?entry.morning:'';
+  document.getElementById('wt-edit-evening').value=entry.evening!=null?entry.evening:'';
+  document.getElementById('wt-edit-notes').value=entry.notes||'';
+  document.getElementById('wt-edit-modal').style.display='flex';
+  document.getElementById('wt-edit-cancel').onclick=()=>{
+    document.getElementById('wt-edit-modal').style.display='none';
+  };
+  document.getElementById('wt-edit-save').onclick=()=>{
+    const morning=parseFloat(document.getElementById('wt-edit-morning').value)||null;
+    const evening=parseFloat(document.getElementById('wt-edit-evening').value)||null;
+    const notes=document.getElementById('wt-edit-notes').value;
+    weightLog=weightLog.filter(e=>e.date!==date);
+    weightLog.push({date,morning,evening,notes});
+    weightLog.sort((a,b)=>a.date.localeCompare(b.date));
+    saveW();
+    document.getElementById('wt-edit-modal').style.display='none';
+    renderWeightPanel();
+    toast('✓ Record updated');
+  };
+}
+
+function deleteWeight(btn){
+  const date=btn.dataset.date;
+  const d=new Date(date+'T12:00:00');
+  const label=d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+  document.getElementById('wt-modal-title').textContent='Delete record';
+  document.getElementById('wt-modal-date').textContent=label;
+  document.getElementById('wt-modal-conflicts').innerHTML=`<div class="modal-conflict-row">This will permanently remove the weigh-in for this date.</div>`;
+  document.getElementById('wt-modal-question').textContent='Do you want to proceed?';
+  document.getElementById('wt-modal-confirm').textContent='Delete';
+  document.getElementById('wt-modal').style.display='flex';
+  document.getElementById('wt-modal-confirm').onclick=()=>{
+    document.getElementById('wt-modal').style.display='none';
+    document.getElementById('wt-modal-confirm').textContent='Overwrite';
+    weightLog=weightLog.filter(e=>e.date!==date);
+    saveW(); renderWeightPanel(); toast('Entry deleted');
+  };
+  document.getElementById('wt-modal-cancel').onclick=()=>{
+    document.getElementById('wt-modal').style.display='none';
+  };
+}
+
 function saveG()  { localStorage.setItem(GK, JSON.stringify(customGoals)); gdriveSave(); }
 function saveH()  { localStorage.setItem(HK, JSON.stringify(habitData));   gdriveSave(); }
 
