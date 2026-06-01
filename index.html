@@ -2945,7 +2945,7 @@ function renderHabitsWeekly(){
             +' ondragover="wDragOver(event)"'
             +' ondrop="wDrop(event,\''+wKey+'\','+i+')" ondragend="wDragEnd()"'
             +' style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:5px 8px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);transition:opacity .15s">'
-            +'<div style="color:var(--text3);cursor:grab;font-size:14px;flex-shrink:0;user-select:none">⠿</div>'
+            +'<div draggable="true" ondragstart="wDragStart(event,\''+wKey+'\','+i+')" style="color:var(--text3);cursor:grab;font-size:14px;flex-shrink:0;user-select:none">⠿</div>'
             +'<input id="'+elemId+'" value="'+name.replace(/"/g,'&quot;')+'" style="flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:12px;padding:4px 8px;outline:none"'
             +' onkeydown="if(event.key===\'Enter\')renameWeekHabit(\''+wKey+'\','+i+',\''+elemId+'\')"'
             +' onblur="renameWeekHabit(\''+wKey+'\','+i+',\''+elemId+'\')">'
