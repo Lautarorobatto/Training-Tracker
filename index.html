@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=1400, initial-scale=1.0">
 <title>Training Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -18,7 +18,7 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;font-size:14px;margin:0;padding:0}
-.layout{display:grid;grid-template-columns:160px 1fr;min-height:100vh;transition:none}
+.layout{display:grid;grid-template-columns:160px 1fr;min-height:100vh;transition:none;min-width:1400px}
 .layout.collapsed{grid-template-columns:48px 1fr}
 .sidebar-resize{position:absolute;top:0;right:0;width:4px;height:100%;cursor:col-resize;z-index:200;background:transparent}
 .sidebar{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;overflow-x:hidden;transition:all .25s ease;width:100%}
@@ -167,7 +167,8 @@ input[type="date"]{color-scheme:dark}
   .metrics-grid{grid-template-columns:repeat(3,1fr)}
 }
 
-@media (max-width: 960px) {
+/* Responsive breakpoints disabled — app uses fixed desktop width with horizontal scroll on small screens */
+@media (max-width: 0px) {
   .layout{grid-template-columns:48px 1fr}
   .layout .logo-texts{opacity:0;pointer-events:none;width:0}
   .layout .nav-label-text{opacity:0;max-width:0}
@@ -183,7 +184,7 @@ input[type="date"]{color-scheme:dark}
   .wt-input-grid{grid-template-columns:1fr 1fr}
 }
 
-@media (max-width: 720px) {
+@media (max-width: 0px) {
   .wt-metrics{grid-template-columns:repeat(2,1fr)}
   .metrics-grid{grid-template-columns:repeat(2,1fr)}
   .form-grid-4{grid-template-columns:1fr 1fr}
@@ -293,7 +294,7 @@ input[type=number]{-moz-appearance:textfield}
 <body>
 <div class="layout">
   <!-- AUTH GATE — shown until Google Drive is connected -->
-  <div class="auth-gate" id="auth-gate" style="display:flex">
+  <div class="auth-gate" id="auth-gate" style="display:none">
     <div class="auth-gate-box">
       <div class="auth-gate-logo">LR Tracker</div>
       <div class="auth-gate-title">Sign in to access<br>your data</div>
@@ -362,7 +363,7 @@ input[type=number]{-moz-appearance:textfield}
               <div class="guideline-title"><span class="gl-icon">✅</span> General Rules</div>
               <div class="guideline-items">
                 <div class="guideline-item"><div class="guideline-dot-cell"><div class="guideline-dot"></div></div><div class="guideline-text-cell">Weigh at the same time every day</div></div>
-                <div class="guideline-item"><div class="guideline-dot-cell"><div class="guideline-dot"></div></div><div class="guideline-text-cell">Same scale, always in the same fixed spot on tile or hardwood</div></div>
+                <div class="guideline-item"><div class="guideline-dot-cell"><div class="guideline-dot"></div></div><div class="guideline-text-cell">Same scale, always in the same fixed spot</div></div>
                 <div class="guideline-item"><div class="guideline-dot-cell"><div class="guideline-dot"></div></div><div class="guideline-text-cell">Underwear only — same every single time</div></div>
                 <div class="guideline-item"><div class="guideline-dot-cell"><div class="guideline-dot"></div></div><div class="guideline-text-cell">Replicate the exact same conditions every weigh-in</div></div>
               </div>
@@ -1130,7 +1131,7 @@ const GK  = 'tt_goals_v1';
 const HK  = 'tt_habits_v1';
 
 // ── Set to true to bypass auth gate for local testing ──────────
-const SKIP_AUTH_FOR_TESTING = false;
+const SKIP_AUTH_FOR_TESTING = true;
 
 const DEFAULT_HABIT_CONFIG = {
   months:        {}, // per-month daily habit lists
@@ -5447,14 +5448,10 @@ function renderWeightMetrics(stats){
   const tcToActive=wtTcTo&&wtTcTo!==defaultTo;
 
   document.getElementById('wt-metrics').innerHTML=`
-    <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr 1fr 2fr;gap:12px;align-items:stretch">
-      <!-- Left: 3 tall summary cards that stretch to fill full height of the 2x2 grid -->
-      <div class="metric-card" style="border-top:2px solid #f5a623;display:flex;flex-direction:column;justify-content:center">
-        <div class="metric-label" style="font-size:12px;margin-bottom:8px">Current Wake-Up</div>
-        <div class="metric-value" style="color:#fff">${current.morning!=null?parseFloat(current.morning).toFixed(1):'—'}<span style="font-size:14px">kg</span></div>
-        <div class="metric-sub" style="font-size:11px;margin-top:6px">${fmtShort(current.date)}</div>
-      </div>
-      <div class="metric-card" style="border-top:2px solid var(--accent);display:flex;flex-direction:column;justify-content:center">
+    <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:stretch">
+      <!-- Left half: 7-Day Avg + Total Change side by side -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:stretch">
+      <div class="metric-card" style="border-top:2px solid var(--text3);display:flex;flex-direction:column;justify-content:center">
         <div class="metric-label" style="font-size:12px;margin-bottom:8px">7-Day Avg</div>
         <div class="metric-value" style="color:#fff">${avg7!=null?parseFloat(avg7).toFixed(1):'—'}<span style="font-size:14px">kg</span></div>
         <div class="metric-sub" style="font-size:11px;margin-top:6px">Rolling average</div>
@@ -5468,24 +5465,25 @@ function renderWeightMetrics(stats){
           <input type="date" id="tc-to" class="cd-date ${tcToActive?'cd-active':''}" style="font-size:9px;padding:2px 5px;width:100px;color-scheme:dark" value="${wtTcTo}" min="${wtTcFrom||defaultFrom}" max="${defaultTo}" data-default="${defaultTo}" onchange="setTcDateRange()">
         </div>
       </div>
+      </div>
       <!-- Right: 2x2 grid — smaller cards with scaled-down text -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:8px">
-        <div class="metric-card" style="border-top:2px solid #4ade80;margin:0;padding:10px 12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:16px">
+        <div class="metric-card" style="border-top:2px solid var(--text3);margin:0;padding:10px 12px">
           <div style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:4px">All-Time Lowest Wake-Up</div>
           <div style="font-size:14px;font-weight:600;font-family:var(--mono);color:#fff;line-height:1">${minMObj?parseFloat(minMObj.v).toFixed(1):'—'}<span style="font-size:8px">kg</span></div>
           <div style="font-size:10px;color:var(--text2);margin-top:3px">${minMObj?fmtShort(minMObj.d):'—'}</div>
         </div>
-        <div class="metric-card" style="border-top:2px solid #f97316;margin:0;padding:10px 12px">
+        <div class="metric-card" style="border-top:2px solid var(--text3);margin:0;padding:10px 12px">
           <div style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:4px">All-Time Highest Wake-Up</div>
           <div style="font-size:14px;font-weight:600;font-family:var(--mono);color:#fff;line-height:1">${maxMObj?parseFloat(maxMObj.v).toFixed(1):'—'}<span style="font-size:8px">kg</span></div>
           <div style="font-size:10px;color:var(--text2);margin-top:3px">${maxMObj?fmtShort(maxMObj.d):'—'}</div>
         </div>
-        <div class="metric-card" style="border-top:2px solid #4ade80;margin:0;padding:10px 12px">
+        <div class="metric-card" style="border-top:2px solid var(--text3);margin:0;padding:10px 12px">
           <div style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:4px">All-Time Lowest Bedtime</div>
           <div style="font-size:14px;font-weight:600;font-family:var(--mono);color:#fff;line-height:1">${minEObj?parseFloat(minEObj.v).toFixed(1):'—'}<span style="font-size:8px">kg</span></div>
           <div style="font-size:10px;color:var(--text2);margin-top:3px">${minEObj?fmtShort(minEObj.d):'—'}</div>
         </div>
-        <div class="metric-card" style="border-top:2px solid #f97316;margin:0;padding:10px 12px">
+        <div class="metric-card" style="border-top:2px solid var(--text3);margin:0;padding:10px 12px">
           <div style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:4px">All-Time Highest Bedtime</div>
           <div style="font-size:14px;font-weight:600;font-family:var(--mono);color:#fff;line-height:1">${maxEObj?parseFloat(maxEObj.v).toFixed(1):'—'}<span style="font-size:8px">kg</span></div>
           <div style="font-size:10px;color:var(--text2);margin-top:3px">${maxEObj?fmtShort(maxEObj.d):'—'}</div>
