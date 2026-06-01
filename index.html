@@ -294,7 +294,7 @@ input[type=number]{-moz-appearance:textfield}
 <body>
 <div class="layout">
   <!-- AUTH GATE — shown until Google Drive is connected -->
-  <div class="auth-gate" id="auth-gate" style="display:none">
+  <div class="auth-gate" id="auth-gate" style="display:flex">
     <div class="auth-gate-box">
       <div class="auth-gate-logo">LR Tracker</div>
       <div class="auth-gate-title">Sign in to access<br>your data</div>
@@ -1131,7 +1131,7 @@ const GK  = 'tt_goals_v1';
 const HK  = 'tt_habits_v1';
 
 // ── Set to true to bypass auth gate for local testing ──────────
-const SKIP_AUTH_FOR_TESTING = true;
+const SKIP_AUTH_FOR_TESTING = false;
 
 const DEFAULT_HABIT_CONFIG = {
   months:        {}, // per-month daily habit lists
