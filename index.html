@@ -612,7 +612,7 @@ input[type=number]{-moz-appearance:textfield}
 <body>
 <div class="layout">
   <!-- AUTH GATE — shown until Google Drive is connected -->
-  <div class="auth-gate" id="auth-gate" style="display:none">
+  <div class="auth-gate" id="auth-gate" style="display:flex">
     <div class="auth-gate-box">
       <div class="auth-gate-logo">LR Tracker</div>
       <div class="auth-gate-title">Sign in to access<br>your data</div>
@@ -1942,7 +1942,7 @@ const SRSECK = 'tt_sport_repsections_v1';
 let sportRepSections = JSON.parse(localStorage.getItem(SRSECK) || '{}');
 
 // ── Set to true to bypass auth gate for local testing ──────────
-const SKIP_AUTH_FOR_TESTING = true;
+const SKIP_AUTH_FOR_TESTING = false;
 
 const DEFAULT_HABIT_CONFIG = {
   months:        {}, // per-month daily habit lists
@@ -9648,6 +9648,11 @@ function sportRenderHeatmap(){
   else if(from){ start=new Date(from+'T12:00:00'); end=new Date(localDateStr()+'T12:00:00'); if(end<start) end=new Date(start); }
   else if(to){ end=new Date(to+'T12:00:00'); start=new Date(end); start.setFullYear(start.getFullYear()-1); start.setDate(start.getDate()+1); }
   else { end=new Date(localDateStr()+'T12:00:00'); start=new Date(end); start.setFullYear(start.getFullYear()-1); start.setDate(start.getDate()+1); }
+
+  // Cap the displayed range to at most the most recent 12 calendar months, anchored to the
+  // latest (end) date. e.g. a Dec-2024 → Dec-2026 filter collapses to Jan-2026 … Dec-2026.
+  var earliest12 = new Date(end.getFullYear(), end.getMonth()-11, 1);
+  if(start < earliest12) start = earliest12;
 
   // aggregate per day; track per-sport minutes & sessions for the breakdown tooltip
   var byDay={};
