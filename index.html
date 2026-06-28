@@ -128,6 +128,17 @@ select{cursor:pointer}textarea{resize:vertical;min-height:70px}
 #wt-morning::-webkit-inner-spin-button,#wt-morning::-webkit-outer-spin-button,
 #wt-evening::-webkit-inner-spin-button,#wt-evening::-webkit-outer-spin-button{filter:invert(1);opacity:1;cursor:pointer}
 
+/* Keep the three Log Weigh-In inputs (date + two numbers) the exact same height.
+   Mobile WebKit gives <input type=date> a taller intrinsic height than text/number
+   inputs (from the native date-edit + picker indicator), which made the Date field
+   taller and overlap the Wake-Up field once the grid stacks to one column. Forcing a
+   fixed box height + normalizing the date control's internal pieces fixes both. */
+.wt-input-grid .field input{height:40px;line-height:1.2;-webkit-appearance:none;appearance:none}
+.wt-input-grid .field input[type="date"]{min-height:40px;max-height:40px;display:block;-webkit-appearance:none;appearance:none}
+.wt-input-grid .field input[type="date"]::-webkit-date-and-time-value{margin:0;text-align:left;line-height:24px}
+.wt-input-grid .field input[type="date"]::-webkit-datetime-edit{padding:0;line-height:24px}
+.wt-input-grid .field input[type="date"]::-webkit-calendar-picker-indicator{margin:0;padding:0;align-self:center}
+
 /* WEIGHT TRACKER SPECIFIC */
 .wt-input-grid{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end}
 .weight-log-table{width:100%;border-collapse:collapse;font-size:13px}
@@ -466,6 +477,9 @@ select{cursor:pointer}textarea{resize:vertical;min-height:70px}
 input[type="date"]{color-scheme:dark}
 .wt-tab-row{display:flex;gap:4px;margin-bottom:16px}
 .wt-tab{padding:6px 14px;border-radius:5px;font-size:12px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);font-family:var(--sans);transition:all .15s}
+/* Range row (7D/30D/90D/All): equal-width, slightly wider buttons that fill the row. */
+.wt-range-row{display:flex;gap:6px;width:100%}
+.wt-range-row .wt-tab{flex:1 1 0;min-width:0;padding:7px 0;text-align:center}
 .wt-tab:hover{color:var(--text);border-color:var(--border2)}
 .wt-tab.active{background:var(--surface3);color:var(--accent);border-color:var(--surface3)}
 .cd-wrap{position:relative;display:inline-flex;align-items:center}
@@ -612,7 +626,7 @@ input[type=number]{-moz-appearance:textfield}
 <body>
 <div class="layout">
   <!-- AUTH GATE — shown until Google Drive is connected -->
-  <div class="auth-gate" id="auth-gate" style="display:flex">
+  <div class="auth-gate" id="auth-gate" style="display:none">
     <div class="auth-gate-box">
       <div class="auth-gate-logo">LR Tracker</div>
       <div class="auth-gate-title">Sign in to access<br>your data</div>
@@ -776,87 +790,111 @@ input[type=number]{-moz-appearance:textfield}
           </div>
           <div class="collap-body">
           <div class="wt-chart-grid">
-            <div class="card">
+            <div class="card" style="grid-column:1/-1">
               <div class="card-header" style="flex-direction:column;align-items:stretch;gap:8px">
-                <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-                  <div class="card-label wt-chart-hd">Weight Trend</div>
-                  <div class="wt-tab-row" style="margin:0">
-                    <button class="wt-tab wt-trend-tab active" onclick="setChartRange('trend',7,this)">7D</button>
-                    <button class="wt-tab wt-trend-tab" onclick="setChartRange('trend',30,this)">30D</button>
-                    <button class="wt-tab wt-trend-tab" onclick="setChartRange('trend',90,this)">90D</button>
-                    <button class="wt-tab wt-trend-tab" onclick="setChartRange('trend',0,this)">All</button>
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;width:100%;gap:12px;flex-wrap:wrap">
+                  <div style="display:flex;flex-direction:column;gap:8px;flex:1 1 260px;min-width:240px">
+                    <div style="font-size:13px;font-weight:600;color:var(--text)">Weight Trend</div>
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                      <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">Show</span>
+                      <select id="wt-trend-series" onchange="setTrendSeries(this.value)" style="background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);font-size:11px;padding:5px 7px;outline:none;width:150px">
+                        <option value="both" selected>Wake-Up &amp; Bedtime</option>
+                        <option value="morning">Wake-Up</option>
+                        <option value="evening">Bedtime</option>
+                      </select>
+                      <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">aggregated</span>
+                      <select id="wt-trend-group" onchange="setTrendGroup(this.value)" style="background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);font-size:11px;padding:5px 7px;outline:none;width:auto">
+                        <option value="day" selected>Daily</option>
+                        <option value="week">Weekly</option>
+                        <option value="month">Monthly</option>
+                        <option value="year">Yearly</option>
+                      </select>
+                      <div id="wt-trend-smooth-wrap" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                        <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">averaged over</span>
+                        <input type="number" id="wt-trend-smooth" min="1" max="90" step="1" value="1" onchange="setTrendSmooth(this.value, true)" oninput="setTrendSmooth(this.value, false)" style="width:52px;font-size:12px;padding:5px 6px;text-align:center">
+                        <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">days</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
-                  <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">From</span>
-                  <input type="date" id="cd-trend-from" class="cd-date" style="font-size:11px;padding:5px 8px;width:130px;color-scheme:dark" onchange="setChartDateRange('trend')">
-                  <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">To</span>
-                  <input type="date" id="cd-trend-to" class="cd-date" style="font-size:11px;padding:5px 8px;width:130px;color-scheme:dark" onchange="setChartDateRange('trend')">
+                  <div style="display:flex;flex-direction:column;gap:6px;width:300px;flex:0 0 auto">
+                    <div class="wt-tab-row wt-range-row" style="margin:0">
+                      <button class="wt-tab wt-trend-tab active" onclick="setChartRange('trend',7,this)">7D</button>
+                      <button class="wt-tab wt-trend-tab" onclick="setChartRange('trend',30,this)">30D</button>
+                      <button class="wt-tab wt-trend-tab" onclick="setChartRange('trend',90,this)">90D</button>
+                      <button class="wt-tab wt-trend-tab" onclick="setChartRange('trend',0,this)">All</button>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px">
+                      <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">From</span>
+                      <input type="date" id="cd-trend-from" class="cd-date" style="font-size:11px;padding:5px 6px;flex:1 1 0;min-width:0;color-scheme:dark" onchange="setChartDateRange('trend')">
+                      <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">To</span>
+                      <input type="date" id="cd-trend-to" class="cd-date" style="font-size:11px;padding:5px 6px;flex:1 1 0;min-width:0;color-scheme:dark" onchange="setChartDateRange('trend')">
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="chart-container"><canvas id="wt-chart"></canvas></div>
-            </div>
-            <div class="card">
-              <div class="card-header" style="flex-direction:column;align-items:stretch;gap:8px">
-                <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-                  <div class="card-label wt-chart-hd">7-Day Rolling Average</div>
-                  <div class="wt-tab-row" style="margin:0">
-                    <button class="wt-tab wt-avg-tab active" onclick="setChartRange('avg',7,this)">7D</button>
-                    <button class="wt-tab wt-avg-tab" onclick="setChartRange('avg',30,this)">30D</button>
-                    <button class="wt-tab wt-avg-tab" onclick="setChartRange('avg',90,this)">90D</button>
-                    <button class="wt-tab wt-avg-tab" onclick="setChartRange('avg',0,this)">All</button>
-                  </div>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
-                  <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">From</span>
-                  <input type="date" id="cd-avg-from" class="cd-date" style="font-size:11px;padding:5px 8px;width:130px;color-scheme:dark" onchange="setChartDateRange('avg')">
-                  <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">To</span>
-                  <input type="date" id="cd-avg-to" class="cd-date" style="font-size:11px;padding:5px 8px;width:130px;color-scheme:dark" onchange="setChartDateRange('avg')">
-                </div>
-              </div>
-              <div class="chart-container"><canvas id="wt-avg-chart"></canvas></div>
+              <div id="wt-main-summary" style="font-size:11.5px;color:var(--text2);margin-top:8px"></div>
             </div>
           </div>
           <div class="wt-chart-grid">
-            <div class="card">
+            <div class="card" style="grid-column:1/-1">
               <div class="card-header" style="flex-direction:column;align-items:stretch;gap:8px">
-                <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-                  <div class="card-label wt-chart-hd">Daily Variation (Wake-Up)</div>
-                  <div class="wt-tab-row" style="margin:0">
-                    <button class="wt-tab wt-var-tab active" onclick="setChartRange('var',7,this)">7D</button>
-                    <button class="wt-tab wt-var-tab" onclick="setChartRange('var',30,this)">30D</button>
-                    <button class="wt-tab wt-var-tab" onclick="setChartRange('var',90,this)">90D</button>
-                    <button class="wt-tab wt-var-tab" onclick="setChartRange('var',0,this)">All</button>
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;width:100%;gap:12px;flex-wrap:wrap">
+                  <div style="display:flex;flex-direction:column;gap:8px;flex:1 1 260px;min-width:240px">
+                    <select id="wt-shift-mode" onchange="setShiftChartMode(this.value)" style="background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;font-weight:600;padding:6px 10px;outline:none;width:240px">
+                      <option value="change" selected>Weight Change Rate</option>
+                      <option value="shift">Weight Shifts (AM ↔ PM)</option>
+                    </select>
+                    <div id="wt-shift-opts-wrap" style="display:none;align-items:center;gap:6px;flex-wrap:wrap">
+                      <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">Show</span>
+                      <select id="wt-shift-series" onchange="setShiftSeries(this.value)" style="background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);font-size:11px;padding:5px 7px;outline:none;width:150px">
+                        <option value="both" selected>AM → PM &amp; PM → AM</option>
+                        <option value="ampm">AM → PM</option>
+                        <option value="pmam">PM → AM</option>
+                      </select>
+                      <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">aggregated</span>
+                      <select id="wt-shift-group" onchange="setShiftGroup(this.value)" style="background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);font-size:11px;padding:5px 7px;outline:none;width:auto">
+                        <option value="day" selected>Daily</option>
+                        <option value="week">Weekly</option>
+                        <option value="month">Monthly</option>
+                        <option value="year">Yearly</option>
+                      </select>
+                    </div>
+                    <div id="wt-change-window-wrap" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                      <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">Show</span>
+                      <select id="wt-change-series" onchange="setChangeSeries(this.value)" style="background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);font-size:11px;padding:5px 7px;outline:none;width:150px">
+                        <option value="both" selected>Wake-Up &amp; Bedtime</option>
+                        <option value="morning">Wake-Up</option>
+                        <option value="evening">Bedtime</option>
+                      </select>
+                      <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">aggregated</span>
+                      <select id="wt-change-group" onchange="setChangeGroup(this.value)" style="background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);font-size:11px;padding:5px 7px;outline:none;width:auto">
+                        <option value="day" selected>Daily</option>
+                        <option value="week">Weekly</option>
+                        <option value="month">Monthly</option>
+                        <option value="year">Yearly</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
-                  <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">From</span>
-                  <input type="date" id="cd-var-from" class="cd-date" style="font-size:11px;padding:5px 8px;width:130px;color-scheme:dark" onchange="setChartDateRange('var')">
-                  <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">To</span>
-                  <input type="date" id="cd-var-to" class="cd-date" style="font-size:11px;padding:5px 8px;width:130px;color-scheme:dark" onchange="setChartDateRange('var')">
+                  <div style="display:flex;flex-direction:column;gap:6px;width:300px;flex:0 0 auto">
+                    <div class="wt-tab-row wt-range-row" style="margin:0">
+                      <button class="wt-tab wt-var-tab active" onclick="setChartRange('var',7,this)">7D</button>
+                      <button class="wt-tab wt-var-tab" onclick="setChartRange('var',30,this)">30D</button>
+                      <button class="wt-tab wt-var-tab" onclick="setChartRange('var',90,this)">90D</button>
+                      <button class="wt-tab wt-var-tab" onclick="setChartRange('var',0,this)">All</button>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px">
+                      <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">From</span>
+                      <input type="date" id="cd-var-from" class="cd-date" style="font-size:11px;padding:5px 6px;flex:1 1 0;min-width:0;color-scheme:dark" onchange="setChartDateRange('var')">
+                      <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">To</span>
+                      <input type="date" id="cd-var-to" class="cd-date" style="font-size:11px;padding:5px 6px;flex:1 1 0;min-width:0;color-scheme:dark" onchange="setChartDateRange('var')">
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="chart-container"><canvas id="wt-var-chart"></canvas></div>
-            </div>
-            <div class="card">
-              <div class="card-header" style="flex-direction:column;align-items:stretch;gap:8px">
-                <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-                  <div class="card-label wt-chart-hd">Daily Variation (Bedtime)</div>
-                  <div class="wt-tab-row" style="margin:0">
-                    <button class="wt-tab wt-vare-tab active" onclick="setChartRange('vare',7,this)">7D</button>
-                    <button class="wt-tab wt-vare-tab" onclick="setChartRange('vare',30,this)">30D</button>
-                    <button class="wt-tab wt-vare-tab" onclick="setChartRange('vare',90,this)">90D</button>
-                    <button class="wt-tab wt-vare-tab" onclick="setChartRange('vare',0,this)">All</button>
-                  </div>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
-                  <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">From</span>
-                  <input type="date" id="cd-vare-from" class="cd-date" style="font-size:11px;padding:5px 8px;width:130px;color-scheme:dark" onchange="setChartDateRange('vare')">
-                  <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">To</span>
-                  <input type="date" id="cd-vare-to" class="cd-date" style="font-size:11px;padding:5px 8px;width:130px;color-scheme:dark" onchange="setChartDateRange('vare')">
-                </div>
-              </div>
-              <div class="chart-container"><canvas id="wt-vare-chart"></canvas></div>
+              <div class="chart-container" style="display:none"><canvas id="wt-change-chart"></canvas></div>
+              <div id="wt-gap-summary" style="font-size:11.5px;color:var(--text2);margin-top:8px"></div>
             </div>
           </div>
           </div>
@@ -888,10 +926,20 @@ input[type=number]{-moz-appearance:textfield}
               <label>Notes</label>
               <input type="text" id="wt-filter-notes" placeholder="Search notes..." oninput="applyWeightTableFilters()" style="width:140px">
             </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <label>Has value</label>
+              <select id="wt-filter-has" onchange="applyWeightTableFilters()" style="background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);font-size:11px;padding:5px 8px;outline:none;width:auto">
+                <option value="all">All rows</option>
+                <option value="either">Wake-Up or Bedtime</option>
+                <option value="morning">Wake-Up</option>
+                <option value="evening">Bedtime</option>
+                <option value="both">Both</option>
+              </select>
+            </div>
             <button class="btn btn-ghost btn-sm" onclick="clearWeightTableFilters()" style="font-size:11px">✕ Clear filters</button>
           </div>
 
-          <div style="overflow-x:auto">
+          <div class="s-recent-scroll" id="wt-log-scroll" style="overflow-x:auto;overflow-y:auto;max-height:580px">
             <table class="weight-log-table" id="wt-log-table">
               <thead>
                 <tr>
@@ -911,6 +959,7 @@ input[type=number]{-moz-appearance:textfield}
               <tbody id="wt-log-body"></tbody>
             </table>
           </div>
+          <div class="s-recent-footer" id="wt-log-footer"></div>
           </div>
         </div>
       </div>
@@ -1942,7 +1991,7 @@ const SRSECK = 'tt_sport_repsections_v1';
 let sportRepSections = JSON.parse(localStorage.getItem(SRSECK) || '{}');
 
 // ── Set to true to bypass auth gate for local testing ──────────
-const SKIP_AUTH_FOR_TESTING = false;
+const SKIP_AUTH_FOR_TESTING = true;
 
 const DEFAULT_HABIT_CONFIG = {
   months:        {}, // per-month daily habit lists
@@ -1967,15 +2016,33 @@ let chartInst   = null;
 let wtChartInst = null;
 let wtAvgInst   = null;
 let wtVarInst   = null;
+let wtChangeInst = null;
+let wtAvgViewInst = null;
 let setCounters = {};
 let wtSortCol   = 'date';
 let wtSortDir   = 'desc';
 let wtFilterFrom= '';
+let wtLogPage = 0;
+let wtLogPageSize = 25;
 let wtFilterTo  = '';
 let wtFilterNotes='';
+let wtFilterHas='all';
 
 let wtRange     = 7;
 let wtRangeAvg  = 7;
+let wtMainMode  = 'trend';
+let wtShiftMode = 'change';
+let wtAvgWindow = 7;
+let wtChangeWindow = 7;
+let wtAvgSeries = 'both';
+let wtAvgGroup  = 'day';
+let wtTrendSeries = 'both';
+let wtTrendGroup  = 'day';
+let wtTrendSmooth = 1;
+let wtChangeSeries = 'both';
+let wtChangeGroup  = 'day';
+let wtShiftSeries = 'both';
+let wtShiftGroup  = 'day';
 let wtRangeVar  = 7;
 let wtRangeVarE = 7;
 let wtDateFrom  = {trend:'',avg:'',var:'',vare:''};
@@ -6122,6 +6189,7 @@ function exportWeightCSV(){
   if(typeof wtFilterFrom!=='undefined' && wtFilterFrom) rows=rows.filter(r=>r.date>=wtFilterFrom);
   if(typeof wtFilterTo!=='undefined' && wtFilterTo)     rows=rows.filter(r=>r.date<=wtFilterTo);
   if(typeof wtFilterNotes!=='undefined' && wtFilterNotes) rows=rows.filter(r=>(r.notes||'').toLowerCase().includes(wtFilterNotes));
+  rows=rows.filter(_wtHasPass);
   rows.sort((a,b)=>{
     let av=a[wtSortCol]??null, bv=b[wtSortCol]??null;
     if(wtSortCol==='date'){av=a.date;bv=b.date;}
@@ -6384,6 +6452,119 @@ function renderWeightMetrics(stats){
     </div>`;
 }
 
+// ── Rate of change + period comparison ────────────────────────
+// Linear-regression slope (kg/day) of morning weight over a set of {date,v} points.
+function _wtSlopePerDay(pts){
+  if(pts.length<2) return null;
+  var t0=new Date(pts[0].date+'T12:00:00').getTime();
+  var xs=pts.map(function(p){ return (new Date(p.date+'T12:00:00').getTime()-t0)/86400000; });
+  var ys=pts.map(function(p){ return p.v; });
+  var n=xs.length, sx=0,sy=0,sxx=0,sxy=0;
+  for(var i=0;i<n;i++){ sx+=xs[i]; sy+=ys[i]; sxx+=xs[i]*xs[i]; sxy+=xs[i]*ys[i]; }
+  var denom=(n*sxx - sx*sx);
+  if(denom===0) return null;
+  return (n*sxy - sx*sy)/denom; // kg per day
+}
+function _wtWindowStats(allMornings, endExclusive, days){
+  // mornings: sorted [{date,v}]; window = (endExclusive-days, endExclusive]
+  var start=new Date(endExclusive.getTime()-days*86400000);
+  var pts=allMornings.filter(function(p){ var d=new Date(p.date+'T12:00:00'); return d>start && d<=endExclusive; });
+  if(!pts.length) return null;
+  var avg=pts.reduce(function(a,p){return a+p.v;},0)/pts.length;
+  var slopeDay=_wtSlopePerDay(pts);
+  return { count:pts.length, avg:avg, ratePerWeek: slopeDay!=null?slopeDay*7:null };
+}
+function renderWeightTrendRate(){
+  var box=document.getElementById('wt-rate-metrics'); if(!box) return;
+  var win=parseInt((document.getElementById('wt-rate-window')||{}).value||'28',10);
+  var mornings=[...weightLog].filter(function(e){return e.morning!=null;})
+    .map(function(e){return {date:e.date, v:e.morning};})
+    .sort(function(a,b){return a.date<b.date?-1:1;});
+  if(mornings.length<2){
+    box.innerHTML='<div class="metric-card" style="border-top:2px solid var(--text3);grid-column:1/-1"><div class="metric-label" style="font-size:12px;margin-bottom:6px">Rate of change</div><div class="metric-sub" style="font-size:12px">Log at least two weigh-ins to see your weekly trend.</div></div>';
+    return;
+  }
+  var today=new Date(); today.setHours(23,59,59,999);
+  var cur=_wtWindowStats(mornings, today, win);
+  var prevEnd=new Date(today.getTime()-win*86400000);
+  var prev=_wtWindowStats(mornings, prevEnd, win);
+
+  var wkLabel = win===14?'2 weeks':win===56?'8 weeks':'4 weeks';
+  function rateStr(r){ if(r==null) return '—'; var s=(r>0?'+':'')+(Math.round(r*100)/100); return s+' kg/wk'; }
+  function rateColor(r){ if(r==null||Math.abs(r)<0.01) return 'var(--text3)'; return r<0?'var(--green)':'var(--red)'; }
+  function dirWord(r){ if(r==null||Math.abs(r)<0.01) return 'Holding steady'; return r<0?'Losing weight':'Gaining weight'; }
+
+  var curRate = cur?cur.ratePerWeek:null;
+  // Comparison deltas (current vs previous window)
+  var rateDelta = (cur&&prev&&cur.ratePerWeek!=null&&prev.ratePerWeek!=null) ? (cur.ratePerWeek-prev.ratePerWeek) : null;
+  var avgDelta  = (cur&&prev) ? (cur.avg-prev.avg) : null;
+
+  function deltaSpan(v,unit){ if(v==null) return '<span style="color:var(--text3)">—</span>'; var c=v>0?'var(--red)':v<0?'var(--green)':'var(--text3)'; var s=(v>0?'+':'')+(Math.round(v*100)/100); return '<span style="color:'+c+'">'+s+' '+unit+'</span>'; }
+
+  var html='';
+  // Rate card
+  html+='<div class="metric-card" style="border-top:2px solid var(--text3)">'+
+    '<div class="metric-label" style="font-size:12px;margin-bottom:6px">Rate of change · last '+wkLabel+'</div>'+
+    '<div class="metric-value" style="color:'+rateColor(curRate)+'">'+rateStr(curRate)+'</div>'+
+    '<div class="metric-sub" style="font-size:11px;margin-top:6px">'+dirWord(curRate)+(cur?' · '+cur.count+' weigh-in'+(cur.count!==1?'s':''):'')+'</div>'+
+  '</div>';
+  // Avg weight this window card
+  html+='<div class="metric-card" style="border-top:2px solid var(--text3)">'+
+    '<div class="metric-label" style="font-size:12px;margin-bottom:6px">Avg weight · last '+wkLabel+'</div>'+
+    '<div class="metric-value" style="color:#fff">'+(cur?(Math.round(cur.avg*10)/10):'—')+'<span style="font-size:14px">kg</span></div>'+
+    '<div class="metric-sub" style="font-size:11px;margin-top:6px">vs prev '+wkLabel+': '+deltaSpan(avgDelta,'kg')+'</div>'+
+  '</div>';
+  // Comparison card: rate this vs prev
+  html+='<div class="metric-card" style="border-top:2px solid var(--text3)">'+
+    '<div class="metric-label" style="font-size:12px;margin-bottom:6px">Trend vs previous '+wkLabel+'</div>'+
+    '<div style="font-size:13px;color:var(--text2);line-height:1.7">'+
+      'This: <b style="color:'+rateColor(curRate)+'">'+rateStr(curRate)+'</b><br>'+
+      'Prev: <b style="color:'+rateColor(prev?prev.ratePerWeek:null)+'">'+rateStr(prev?prev.ratePerWeek:null)+'</b>'+
+      (rateDelta!=null?'<br>Change: '+deltaSpan(rateDelta,'kg/wk'):'')+
+    '</div>'+
+  '</div>';
+
+  box.style.gridTemplateColumns='repeat(3,1fr)';
+  box.innerHTML=html;
+}
+
+// ── Weekly / monthly average chart ─────────────────────────────
+function renderWeightAvgView(){
+  var canvas=document.getElementById('wt-avgview-chart');
+  var empty=document.getElementById('wt-avgview-empty');
+  if(!canvas) return;
+  var group=(document.getElementById('wt-avgview-group')||{}).value||'week';
+  var mornings=[...weightLog].filter(function(e){return e.morning!=null;})
+    .map(function(e){return {date:e.date, v:e.morning};})
+    .sort(function(a,b){return a.date<b.date?-1:1;});
+  function clearChart(){ if(wtAvgViewInst){ wtAvgViewInst.destroy(); wtAvgViewInst=null; } }
+  if(mornings.length<2){ canvas.style.display='none'; if(empty) empty.style.display=''; clearChart(); return; }
+  canvas.style.display=''; if(empty) empty.style.display='none';
+
+  function weekKey(ds){ var d=new Date(ds+'T12:00:00'); var day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); return d.toISOString().slice(0,10); } // Monday
+  var buckets={};
+  mornings.forEach(function(p){
+    var k = group==='month' ? p.date.slice(0,7) : weekKey(p.date);
+    if(!buckets[k]) buckets[k]={sum:0,n:0};
+    buckets[k].sum+=p.v; buckets[k].n++;
+  });
+  var keys=Object.keys(buckets).sort();
+  var labels=keys.map(function(k){
+    if(group==='month'){ var dm=new Date(k+'-01T12:00:00'); return dm.toLocaleDateString('en-US',{month:'short',year:'2-digit'}); }
+    var dt=new Date(k+'T12:00:00'); return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  });
+  var vals=keys.map(function(k){ return Math.round(buckets[k].sum/buckets[k].n*100)/100; });
+  var counts=keys.map(function(k){ return buckets[k].n; });
+
+  var ctx=canvas.getContext('2d'); clearChart();
+  wtAvgViewInst=new Chart(ctx,{type:'line',data:{labels:labels,datasets:[{label:(group==='month'?'Monthly':'Weekly')+' avg weight (kg)',data:vals,borderColor:'#c8ff00',backgroundColor:'rgba(200,255,0,0.10)',pointBackgroundColor:'#c8ff00',pointRadius:3,pointHoverRadius:5,tension:.25,fill:true,borderWidth:2.5}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#888',font:{size:11},usePointStyle:true,pointStyle:'line',boxWidth:20}},
+        tooltip:{callbacks:{label:function(c){ var n=counts[c.dataIndex]; return 'Avg: '+c.parsed.y+' kg ('+n+' weigh-in'+(n!==1?'s':'')+')'; }}}},
+      scales:{y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#555',font:{size:11},callback:function(v){return v+'kg';}}},
+        x:{grid:{display:false},ticks:{color:'#555',font:{size:10},maxTicksLimit:12}}}}});
+}
+
 function getStats(){ return computeWeightStats(); }
 function sliceStats(stats,range,chartKey){
   let data = range>0 ? stats.slice(-range) : stats;
@@ -6398,66 +6579,515 @@ function sliceStats(stats,range,chartKey){
 }
 function pr(range){ return range===0||range>=90?0:3; }
 
+// Wrap a calculated value so hovering shows the polished tooltip (blue-bordered, dark bg)
+// used elsewhere in the app. `calcLines` is an array of strings; rendered with <br> breaks.
+function _calcTip(displayText, calcLines){
+  const html = calcLines.map(l=>String(l)).join('<br>');
+  // Escape for embedding inside a single-quoted JS string within an HTML attribute.
+  const esc = html.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+  return '<span style="cursor:help;border-bottom:1px dashed var(--border2);display:inline-block" onmouseenter="showKpiTip(event,\''+esc+'\',{autoWidth:true})" onmouseleave="hideKpiTip()">'+displayText+'</span>';
+}
+
 function renderChartTrend(){
+  const group=wtTrendGroup||'day';
+  const series=wtTrendSeries||'both';
+  var _sw=document.getElementById('wt-trend-smooth-wrap'); if(_sw) _sw.style.display=(group==='day')?'flex':'none';
   const data=sliceStats(getStats(),wtRange,'trend');
-  const labels=data.map(d=>{const dt=new Date(d.date+'T12:00:00');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});});
-  const mornings=data.map(d=>d.morning);
-  const evenings=data.map(d=>d.evening);
   const ctx=document.getElementById('wt-chart')?.getContext('2d');
   if(!ctx) return;
   if(wtChartInst) wtChartInst.destroy();
-  const ptR=pr(wtRange);
-  wtChartInst=new Chart(ctx,{type:'line',data:{labels,datasets:[
-    {label:'Wake-Up',data:mornings,borderColor:'#f5a623',backgroundColor:'rgba(245,166,35,0.06)',pointBackgroundColor:'#f5a623',pointRadius:ptR,pointHoverRadius:ptR?5:3,tension:.3,fill:true,borderWidth:2},
-    {label:'Bedtime',data:evenings,borderColor:'#6c8ebf',backgroundColor:'rgba(108,142,191,0.04)',pointBackgroundColor:'#6c8ebf',pointRadius:ptR,pointHoverRadius:ptR?5:3,tension:.3,borderWidth:2}
-  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#555',font:{size:11},usePointStyle:true,pointStyle:'line',boxWidth:20}},tooltip:{callbacks:{label:c=>`${c.dataset.label} (kg): ${c.parsed.y.toFixed(1)}`}}},scales:{y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#555',font:{size:11}}},x:{grid:{display:false},ticks:{color:'#555',font:{size:10},maxTicksLimit:8}}}}});
+
+  // ── Group the visible data into period buckets (avg within each period) ──
+  function keyOf(ds){ if(group==='year') return ds.slice(0,4); if(group==='month') return ds.slice(0,7); if(group==='week'){var dd=new Date(ds+'T12:00:00');var day=(dd.getDay()+6)%7;dd.setDate(dd.getDate()-day);return dd.toISOString().slice(0,10);} return ds; }
+  function labelOf(k){ if(group==='year') return k; if(group==='month'){const dm=new Date(k+'-01T12:00:00');return dm.toLocaleDateString('en-US',{month:'short',year:'2-digit'});} const dt=new Date(k+'T12:00:00'); return group==='day'?dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}):dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+  // advance a bucket key by n periods (for projected future labels)
+  function nextKey(k, n){
+    if(group==='year') return String(parseInt(k,10)+n);
+    if(group==='month'){ let [y,m]=k.split('-').map(Number); let idx=(y*12+(m-1))+n; return Math.floor(idx/12)+'-'+String(idx%12+1).padStart(2,'0'); }
+    const base=new Date((group==='week'?k:k)+'T12:00:00'); base.setDate(base.getDate()+n*(group==='week'?7:1)); return base.toISOString().slice(0,10);
+  }
+
+  const order=[]; const mB={}, eB={};
+  data.forEach(d=>{ const k=keyOf(d.date); if(order.indexOf(k)===-1) order.push(k); if(d.morning!=null)(mB[k]=mB[k]||[]).push(d.morning); if(d.evening!=null)(eB[k]=eB[k]||[]).push(d.evening); });
+  const avg=arr=>(arr&&arr.length)?+(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(2):null;
+  const nGroups=order.length;
+
+  // Projection horizon by grouping.
+  const PROJ = group==='day'?14:group==='week'?8:group==='month'?6:3;
+  let labels=order.map(labelOf);
+  for(let k=1;k<=PROJ;k++) labels.push(nGroups?labelOf(nextKey(order[nGroups-1],k)):'');
+
+  const mornings=order.map(k=>avg(mB[k])); for(let k=0;k<PROJ;k++) mornings.push(null);
+  const evenings=order.map(k=>avg(eB[k])); for(let k=0;k<PROJ;k++) evenings.push(null);
+
+  // Daily smoothing: replace each day's value with a trailing X-day rolling average.
+  // Only for Daily grouping (weekly/monthly/yearly already average within their period).
+  const smoothWin = (group==='day') ? Math.max(1, Math.min(90, parseInt(wtTrendSmooth,10)||1)) : 1;
+  if(group==='day' && smoothWin>1){
+    const allStats=getStats();
+    function rollMap(key){
+      const byDate={};
+      allStats.forEach((d,i)=>{ const w=allStats.slice(Math.max(0,i-(smoothWin-1)),i+1).filter(x=>x[key]!=null); byDate[d.date]= w.length? +(w.reduce((a,x)=>a+x[key],0)/w.length).toFixed(2):null; });
+      return byDate;
+    }
+    const mRoll=rollMap('morning'), eRoll=rollMap('evening');
+    order.forEach((k,i)=>{ if(mRoll[k]!=null) mornings[i]=mRoll[k]; if(eRoll[k]!=null) evenings[i]=eRoll[k]; });
+  }
+
+  // Regression over points. For daily grouping use REAL day offsets as x (so the slope is a
+  // true per-calendar-day rate even when days are skipped); for week/month/year the buckets
+  // are evenly spaced so the bucket index is the correct x. This keeps the projection slope
+  // consistent with the Weight Change Rate insight (which also regresses on real days).
+  const xVals = (group==='day')
+    ? order.map(k=>(new Date(k+'T12:00:00').getTime()-new Date(order[0]+'T12:00:00').getTime())/86400000)
+    : order.map((_,i)=>i);
+  function fitFor(vals){
+    const pts=[]; vals.forEach((v,i)=>{ if(v!=null && i<nGroups) pts.push({x:xVals[i],v}); });
+    if(pts.length<2) return null;
+    const n=pts.length; let sx=0,sy=0,sxx=0,sxy=0;
+    pts.forEach(p=>{ sx+=p.x; sy+=p.v; sxx+=p.x*p.x; sxy+=p.x*p.v; });
+    const denom=(n*sxx - sx*sx); if(denom===0) return null;
+    const slope=(n*sxy - sx*sy)/denom, intercept=(sy - slope*sx)/n;
+    // Fit/projection are plotted at each label position; convert label index -> x.
+    // For daily, future labels are consecutive days, so x continues by +1 day from the last point.
+    const xAt=i=>{
+      if(i<nGroups) return xVals[i];
+      // future point: extend by whole steps (days for daily, index for grouped)
+      const lastX = nGroups>0 ? xVals[nGroups-1] : 0;
+      return lastX + (i-(nGroups-1));
+    };
+    const fit=labels.map((_,i)=> i<nGroups ? +(intercept+slope*xAt(i)).toFixed(2) : null);
+    const proj=labels.map(()=>null);
+    if(nGroups>0){ proj[nGroups-1]=+(intercept+slope*xAt(nGroups-1)).toFixed(2); for(let k=1;k<=PROJ;k++) proj[nGroups-1+k]=+(intercept+slope*xAt(nGroups-1+k)).toFixed(2); }
+    return {fit,proj,slopePerStep:slope,_reg:{n,sx,sy,sxx,sxy,denom,num:(n*sxy - sx*sy)}};
+  }
+  const showM=(series==='both'||series==='morning'), showE=(series==='both'||series==='evening');
+  const fM=showM?fitFor(mornings):null;
+  const fE=showE?fitFor(evenings):null;
+
+  const ptR = group==='day'?pr(wtRange):3;
+  const datasets=[];
+  if(showM) datasets.push({label:'Wake-Up',data:mornings,borderColor:'#f5a623',backgroundColor:'transparent',pointBackgroundColor:'#f5a623',pointRadius:ptR,pointHoverRadius:ptR?5:3,tension:.3,fill:false,borderWidth:2});
+  if(showE) datasets.push({label:'Bedtime',data:evenings,borderColor:'#6c8ebf',backgroundColor:'transparent',pointBackgroundColor:'#6c8ebf',pointRadius:ptR,pointHoverRadius:ptR?5:3,tension:.3,fill:false,borderWidth:2});
+  const endDot=c=>{const a=c.dataset.data; let last=-1; for(let i=0;i<a.length;i++){ if(a[i]!=null) last=i; } return c.dataIndex===last;};
+  if(fM){
+    datasets.push({label:'Wake-Up trend',data:fM.fit,borderColor:'rgba(245,166,35,0.32)',backgroundColor:'transparent',pointRadius:0,pointHoverRadius:0,borderWidth:1.5,tension:0,fill:false});
+    datasets.push({label:'Wake-Up projection',data:fM.proj,borderColor:'rgba(245,166,35,0.32)',backgroundColor:'transparent',pointRadius:c=>endDot(c)?2:0,pointHoverRadius:c=>endDot(c)?4:0,pointBackgroundColor:'rgba(245,166,35,0.5)',pointBorderColor:'rgba(245,166,35,0.5)',pointBorderWidth:0,borderWidth:1.5,borderDash:[5,4],tension:0,fill:false});
+  }
+  if(fE){
+    datasets.push({label:'Bedtime trend',data:fE.fit,borderColor:'rgba(108,142,191,0.36)',backgroundColor:'transparent',pointRadius:0,pointHoverRadius:0,borderWidth:1.5,tension:0,fill:false});
+    datasets.push({label:'Bedtime projection',data:fE.proj,borderColor:'rgba(108,142,191,0.36)',backgroundColor:'transparent',pointRadius:c=>endDot(c)?2:0,pointHoverRadius:c=>endDot(c)?4:0,pointBackgroundColor:'rgba(108,142,191,0.55)',pointBorderColor:'rgba(108,142,191,0.55)',pointBorderWidth:0,borderWidth:1.5,borderDash:[5,4],tension:0,fill:false});
+  }
+
+  wtChartInst=new Chart(ctx,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:(showM&&showE),labels:{color:'#555',font:{size:11},usePointStyle:true,pointStyle:'line',boxWidth:20,filter:function(it){return !/projection|trend/i.test(it.text);}}},tooltip:{filter:function(it){return it.parsed.y!=null;},callbacks:{label:c=>{const lab=c.dataset.label; const u=c.parsed.y!=null?c.parsed.y.toFixed(1):'—'; if(/projection/i.test(lab)) return lab.replace(' projection','')+' projected: '+u+' kg'; if(/trend/i.test(lab)) return lab+': '+u+' kg'; return lab+' (kg): '+u;}}}},scales:{y:{title:{display:true,text:'Weight (kg)',color:'#555',font:{size:11}},grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#555',font:{size:11},callback:function(v){return Math.round(v*10)/10;}}},x:{grid:{display:false},ticks:{color:'#555',font:{size:10},maxTicksLimit:8}}}}});
+
+  // Insight (respects series + grouping).
+  const sumEl=document.getElementById('wt-main-summary');
+  if(sumEl){
+    const perName=group==='day'?'day':group==='week'?'week':group==='month'?'month':'year';
+    // Build a labeled (value+bucket) list for a metric's array.
+    function lab(arr){ const o=[]; arr.slice(0,nGroups).forEach((x,i)=>{ if(x!=null) o.push({v:x, lab:labelOf(order[i])}); }); return o; }
+    const mL=lab(mornings), eL=lab(evenings);
+    const showM=(series==='both'||series==='morning'), showE=(series==='both'||series==='evening');
+    // Pick which metrics actually have enough data to describe.
+    const items=[];
+    if(showM && mL.length>=2) items.push({key:'m', name:'Wake-Up', L:mL, fit:fM});
+    if(showE && eL.length>=2) items.push({key:'e', name:'Bedtime', L:eL, fit:fE});
+    if(items.length){
+      // Each bullet lists selected metrics separated by a spaced pipe.
+      function seg(fn){ return items.map(fn).join('&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;'); }
+      const projLine = seg(it=>{
+        if(it.fit && it.fit.slopePerStep!=null){
+          const x=+it.fit.slopePerStep.toFixed(2); const s=(x>=0?'+':'')+x+' kg/'+perName;
+          const n=it.L.length;
+          const xUnit = group==='day' ? 'days since first weigh-in' : (perName+' index 0,1,2…');
+          const r2=v=>Math.round(v*100)/100;
+          let calc;
+          if(it.fit._reg){
+            const g=it.fit._reg;
+            calc=[
+              'Slope of the best-fit line (linear regression)',
+              'through the '+n+' point'+(n!==1?'s':'')+' shown (x = '+xUnit+', y = kg):',
+              '&nbsp;',
+              'slope = [ n·Σxy − Σx·Σy ] / [ n·Σx² − (Σx)² ]',
+              'slope = [ '+g.n+'·'+r2(g.sxy)+' − '+r2(g.sx)+'·'+r2(g.sy)+' ] / [ '+g.n+'·'+r2(g.sxx)+' − '+r2(g.sx)+'² ]',
+              'slope = '+r2(g.num)+' / '+r2(g.denom),
+              'slope = '+(x>=0?'+':'')+(Math.round(it.fit.slopePerStep*1000)/1000)+' kg/'+perName
+            ];
+          } else {
+            calc=['Line of best fit (linear regression) through the '+n+' point'+(n!==1?'s':'')+' shown.','Slope = '+(x>=0?'+':'')+(Math.round(it.fit.slopePerStep*1000)/1000)+' kg/'+perName+'.'];
+          }
+          return it.name+' '+_calcTip(s,calc);
+        }
+        return it.name+' n/a';
+      });
+      const latestLine = seg(it=>{
+        const e=it.L[it.L.length-1];
+        let calc;
+        if(group==='day'){
+          calc=['Your most recent '+it.name+' weigh-in:', e.v.toFixed(1)+' kg on '+e.lab+'.'];
+        } else {
+          // The bucket value is the mean of that period's weigh-ins.
+          const dpts=data.filter(d=>d[it.key==='m'?'morning':'evening']!=null && (function(){
+            // recompute the bucket key to gather this period's points
+            const dk = (group==='year')?d.date.slice(0,4):(group==='month')?d.date.slice(0,7):(function(){var x=new Date(d.date+'T12:00:00');var day=(x.getDay()+6)%7;x.setDate(x.getDate()-day);return x.toISOString().slice(0,10);})();
+            return dk===order[order.length-1];
+          })());
+          const vals=dpts.map(d=>d[it.key==='m'?'morning':'evening']);
+          const sum=vals.reduce((a,b)=>a+b,0);
+          calc=['Average of all '+vals.length+' '+it.name+' weigh-in'+(vals.length!==1?'s':'')+' in the latest '+perName+' ('+e.lab+'):','&nbsp;','mean = (sum of values) ÷ count','mean = '+(Math.round(sum*100)/100)+' ÷ '+vals.length,'mean = '+e.v.toFixed(2)+' kg'];
+        }
+        return it.name+' ('+e.lab+') '+_calcTip(e.v.toFixed(1)+' kg', calc);
+      });
+      const rangeLine = seg(it=>{
+        const vs=it.L.map(p=>p.v); const mn=Math.min.apply(null,vs), mx=Math.max.apply(null,vs);
+        const loE=it.L.find(p=>p.v===mn), hiE=it.L.find(p=>p.v===mx);
+        const unitTxt = group==='day'?'weigh-in':(perName+' average');
+        const calc=['Lowest and highest '+it.name+' '+unitTxt+' in the shown range:','Low '+mn.toFixed(1)+' kg ('+(loE?loE.lab:'')+')','High '+mx.toFixed(1)+' kg ('+(hiE?hiE.lab:'')+')'];
+        return it.name+' '+_calcTip('['+mn.toFixed(1)+' – '+mx.toFixed(1)+']', calc);
+      });
+      const latestLbl = group==='day' ? 'Latest weigh-in' : ('Latest '+perName);
+      sumEl.innerHTML=
+        '<div>• Projected change: '+projLine+'</div>'+
+        '<div style="margin-top:4px">• '+latestLbl+' : '+latestLine+'</div>'+
+        '<div style="margin-top:4px">• Range over shown period (kg): '+rangeLine+'</div>';
+    } else {
+      sumEl.innerHTML='<span style="color:var(--text3)">Add more weigh-ins to see your trend.</span>';
+    }
+  }
 }
 
 function renderChartAvg(){
-  const data=sliceStats(getStats(),wtRangeAvg,'avg');
-  const labels=data.map(d=>{const dt=new Date(d.date+'T12:00:00');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});});
-  const avgs=data.map(d=>d.avg7);
-  const avgsE=data.map(d=>d.avg7evening);
+  const win=Math.max(2, Math.min(90, parseInt(wtAvgWindow,10)||7));
+  const series=wtAvgSeries||'both';
+  const group=wtAvgGroup||'day';
+  const allStats=getStats();
+  // `win`-day trailing rolling average from ALL stats.
+  const morningRoll=[], eveningRoll=[];
+  allStats.forEach((d,i)=>{
+    const wM=allStats.slice(Math.max(0,i-(win-1)),i+1).filter(x=>x.morning!=null);
+    morningRoll[i]=wM.length?+(wM.reduce((a,x)=>a+x.morning,0)/wM.length).toFixed(2):null;
+    const wE=allStats.slice(Math.max(0,i-(win-1)),i+1).filter(x=>x.evening!=null);
+    eveningRoll[i]=wE.length?+(wE.reduce((a,x)=>a+x.evening,0)/wE.length).toFixed(2):null;
+  });
+  const rollByDate={}; allStats.forEach((d,i)=>{ rollByDate[d.date]={m:morningRoll[i],e:eveningRoll[i]}; });
+  const data=sliceStats(allStats,wtRangeAvg,'avg');
+
+  let labels, avgs, avgsE;
+  if(group==='day'){
+    labels=data.map(d=>{const dt=new Date(d.date+'T12:00:00');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});});
+    avgs=data.map(d=>rollByDate[d.date]?rollByDate[d.date].m:null);
+    avgsE=data.map(d=>rollByDate[d.date]?rollByDate[d.date].e:null);
+  } else {
+    // Group the rolling values into weekly/monthly/yearly buckets, averaging within each bucket.
+    function keyOf(ds){ if(group==='year') return ds.slice(0,4); if(group==='month') return ds.slice(0,7); var d=new Date(ds+'T12:00:00'); var day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); return d.toISOString().slice(0,10); }
+    const buckets={};
+    data.forEach(d=>{ const rv=rollByDate[d.date]; if(!rv) return; const k=keyOf(d.date); if(!buckets[k]) buckets[k]={m:[],e:[]}; if(rv.m!=null) buckets[k].m.push(rv.m); if(rv.e!=null) buckets[k].e.push(rv.e); });
+    const keys=Object.keys(buckets).sort();
+    labels=keys.map(k=>{ if(group==='year') return k; if(group==='month'){const dm=new Date(k+'-01T12:00:00');return dm.toLocaleDateString('en-US',{month:'short',year:'2-digit'});} const dt=new Date(k+'T12:00:00');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}); });
+    const avg=arr=>arr.length?+(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(2):null;
+    avgs=keys.map(k=>avg(buckets[k].m));
+    avgsE=keys.map(k=>avg(buckets[k].e));
+  }
+
   const ctx=document.getElementById('wt-avg-chart')?.getContext('2d');
   if(!ctx) return;
   if(wtAvgInst) wtAvgInst.destroy();
-  const ptR=pr(wtRangeAvg);
-  wtAvgInst=new Chart(ctx,{type:'line',data:{labels,datasets:[
-    {label:'7-Day Avg Wake-Up',data:avgs,borderColor:'#f5a623',backgroundColor:'rgba(245,166,35,0.06)',pointBackgroundColor:'#f5a623',pointRadius:ptR,pointHoverRadius:ptR?5:3,tension:.4,fill:false,borderWidth:2},
-    {label:'7-Day Avg Bedtime',data:avgsE,borderColor:'#6c8ebf',backgroundColor:'rgba(108,142,191,0.04)',pointBackgroundColor:'#6c8ebf',pointRadius:ptR,pointHoverRadius:ptR?5:3,tension:.4,fill:false,borderWidth:2}
-  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#555',font:{size:11},padding:16,usePointStyle:true,pointStyle:'line',boxWidth:20}},tooltip:{callbacks:{label:c=>`${c.dataset.label} (kg): ${c.parsed.y.toFixed(1)}`}}},scales:{y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#555',font:{size:11}}},x:{grid:{display:false},ticks:{color:'#555',font:{size:10},maxTicksLimit:8}}}}});
+  const ptR=group==='day'?pr(wtRangeAvg):3;
+  const prefix = (group==='week'?'Weekly ':group==='month'?'Monthly ':'')+win+'-day avg';
+  const ds=[];
+  if(series==='both'||series==='morning') ds.push({label:prefix+' Wake-Up',data:avgs,borderColor:'#f5a623',backgroundColor:'rgba(245,166,35,0.06)',pointBackgroundColor:'#f5a623',pointRadius:ptR,pointHoverRadius:ptR?5:3,tension:.4,fill:false,borderWidth:2});
+  if(series==='both'||series==='evening') ds.push({label:prefix+' Bedtime',data:avgsE,borderColor:'#6c8ebf',backgroundColor:'rgba(108,142,191,0.04)',pointBackgroundColor:'#6c8ebf',pointRadius:ptR,pointHoverRadius:ptR?5:3,tension:.4,fill:false,borderWidth:2});
+  wtAvgInst=new Chart(ctx,{type:'line',data:{labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:ds.length>1,labels:{color:'#555',font:{size:11},padding:16,usePointStyle:true,pointStyle:'line',boxWidth:20}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y!=null?c.parsed.y.toFixed(1):'—'} kg`}}},scales:{y:{title:{display:true,text:'Weight (kg)',color:'#555',font:{size:11}},grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#555',font:{size:11},precision:1,callback:function(v){return Math.round(v*10)/10;}}},x:{grid:{display:false},ticks:{color:'#555',font:{size:10},maxTicksLimit:8}}}}});
+
+  // Insight for the rolling-average view.
+  if(wtMainMode==='avg'){
+    const sumEl=document.getElementById('wt-main-summary');
+    if(sumEl){
+      const primary = (series==='evening')?avgsE:avgs;
+      const lbl = (series==='evening')?'Bedtime':'Wake-Up';
+      const v=primary.filter(x=>x!=null);
+      if(v.length>=2){
+        const first=v[0], last=v[v.length-1], net=+(last-first).toFixed(2);
+        const perStep = +(net/(v.length-1)).toFixed(3);
+        const stepName = group==='year'?'year':group==='month'?'month':group==='week'?'week':'point';
+        const dir = net<0?'down':net>0?'up':'flat';
+        const lo=Math.min.apply(null,v), hi=Math.max.apply(null,v);
+        sumEl.innerHTML='<div>Smoothed '+lbl+' is '+(net>=0?'+':'')+net+' kg across this range ('+(net>=0?'+':'')+perStep+' kg/'+stepName+', trending '+dir+')</div>'+
+          '<div style="margin-top:4px">Current smoothed value: '+last.toFixed(1)+' kg · range '+lo.toFixed(1)+'–'+hi.toFixed(1)+' kg</div>';
+      } else {
+        sumEl.innerHTML='<span style="color:var(--text3)">Add more weigh-ins to see a smoothed trend.</span>';
+      }
+    }
+  }
 }
 
 function renderChartVar(){
+  const group=wtShiftGroup||'day';
+  const series=wtShiftSeries||'both';
   const data=sliceStats(getStats(),wtRangeVar,'var');
-  const labels=data.map(d=>{const dt=new Date(d.date+'T12:00:00');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});});
-  const deltas=data.map(d=>d.deltaM);
+  // Per-day AM → PM gain (evening − morning, same day) keyed by date.
+  const amPmByDate={};
+  data.forEach(d=>{ if(d.morning!=null && d.evening!=null) amPmByDate[d.date]=+(d.evening-d.morning).toFixed(3); });
+  // Per-day PM → AM (overnight): next morning − this evening, consecutive days; attach to day i.
+  const pmAmByDate={};
+  data.forEach((d,i)=>{
+    const nxt=data[i+1];
+    if(!nxt || d.evening==null || nxt.morning==null) return;
+    const t1=new Date(d.date+'T12:00:00').getTime(), t2=new Date(nxt.date+'T12:00:00').getTime();
+    if(Math.round((t2-t1)/86400000)!==1) return;
+    pmAmByDate[d.date]=+(nxt.morning-d.evening).toFixed(3);
+  });
+
+  // Bucketing by grouping.
+  function keyOf(ds){ if(group==='year') return ds.slice(0,4); if(group==='month') return ds.slice(0,7); if(group==='week'){var dd=new Date(ds+'T12:00:00');var day=(dd.getDay()+6)%7;dd.setDate(dd.getDate()-day);return dd.toISOString().slice(0,10);} return ds; }
+  function labelOf(k){ if(group==='year') return k; if(group==='month'){const dm=new Date(k+'-01T12:00:00');return dm.toLocaleDateString('en-US',{month:'short',year:'2-digit'});} const dt=new Date(k+'T12:00:00'); return group==='week'?dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}):dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}); }
+  const order=[]; const amBuckets={}, pmBuckets={};
+  data.forEach(d=>{ const k=keyOf(d.date); if(order.indexOf(k)===-1) order.push(k); if(amPmByDate[d.date]!=null)(amBuckets[k]=amBuckets[k]||[]).push(amPmByDate[d.date]); if(pmAmByDate[d.date]!=null)(pmBuckets[k]=pmBuckets[k]||[]).push(pmAmByDate[d.date]); });
+  const avg=arr=>(arr&&arr.length)?+(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(3):null;
+  const labels=order.map(labelOf);
+  const amPm=order.map(k=>avg(amBuckets[k]));
+  const pmAm=order.map(k=>avg(pmBuckets[k]));
+
   const ctx=document.getElementById('wt-var-chart')?.getContext('2d');
   if(!ctx) return;
   if(wtVarInst) wtVarInst.destroy();
-  wtVarInst=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label:'Δ Wake-Up',data:deltas,backgroundColor:deltas.map(v=>v===null?'transparent':v>0?'rgba(255,68,68,0.7)':v<0?'rgba(0,204,102,0.7)':'rgba(85,85,85,0.5)'),borderRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`Δ Wake-Up (kg): ${c.parsed.y.toFixed(1)}`}}},scales:{y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#555',font:{size:10}}},x:{grid:{display:false},ticks:{color:'#555',font:{size:10},maxTicksLimit:8}}}}});
+  const gSuffix = group==='day'?'':' (avg)';
+  const ds=[];
+  if(series==='both'||series==='ampm') ds.push({label:'AM → PM (within day)'+gSuffix,data:amPm,backgroundColor:'rgba(108,142,191,0.8)',borderRadius:2});
+  if(series==='both'||series==='pmam') ds.push({label:'PM → AM (overnight)'+gSuffix,data:pmAm,backgroundColor:'rgba(245,166,35,0.8)',borderRadius:2});
+  wtVarInst=new Chart(ctx,{type:'bar',data:{labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:ds.length>1,labels:{color:'#555',font:{size:11},usePointStyle:true,pointStyle:'rect',boxWidth:14}},tooltip:{callbacks:{label:c=>{const v=c.parsed.y; if(v==null) return null; return c.dataset.label+': '+(v>=0?'+':'')+v.toFixed(2)+' kg';}}}},scales:{y:{title:{display:true,text:'Change (kg)',color:'#555',font:{size:11}},grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#555',font:{size:10},callback:v=>(v>0?'+':'')+(Math.round(v*100)/100)}},x:{grid:{display:false},ticks:{color:'#555',font:{size:10},maxTicksLimit:8}}}}});
+
+  // Insight (respects the series selection).
+  const sum=document.getElementById('wt-gap-summary');
+  if(sum && wtShiftMode!=='change'){
+    const perName = group==='day'?'day':group==='week'?'week':group==='month'?'month':'year';
+    function line(vals, label, fallback){
+      const v=vals.filter(x=>x!=null);
+      if(!v.length) return '<span style="color:var(--text3)">'+fallback+'</span>';
+      const a=v.reduce((x,y)=>x+y,0)/v.length;
+      const sum2=v.reduce((x,y)=>x+y,0);
+      const mn=Math.min.apply(null,v), mx=Math.max.apply(null,v);
+      const periodWord = group==='day'?'value':(perName+' average');
+      const avgCalc=['Average of all '+v.length+' '+periodWord+(v.length!==1?'s':'')+' in the shown range:','&nbsp;','mean = (sum of values) ÷ count','mean = '+(sum2>=0?'+':'')+(Math.round(sum2*100)/100)+' ÷ '+v.length,'mean = '+(a>=0?'+':'')+(Math.round(a*1000)/1000)+' kg'];
+      const rangeCalc=['Smallest and largest '+periodWord+' in the shown range:','Low '+(mn>=0?'+':'')+mn.toFixed(2)+' kg','High '+(mx>=0?'+':'')+mx.toFixed(2)+' kg'];
+      const avgTxt=_calcTip((a>=0?'+':'')+(Math.round(a*100)/100)+' kg', avgCalc);
+      const rangeTxt=_calcTip('['+(mn>=0?'+':'')+mn.toFixed(1)+' ; '+(mx>=0?'+':'')+mx.toFixed(1)+']', rangeCalc);
+      return label+': '+avgTxt+' — Range '+rangeTxt;
+    }
+    const parts=[];
+    if(series==='both'||series==='ampm') parts.push('<div>• '+line(amPm,'Avg overnight-to-evening gain (AM → PM)','Log a Wake-Up and Bedtime on the same day to see your daily gain.')+'</div>');
+    if(series==='both'||series==='pmam') parts.push('<div'+(parts.length?' style="margin-top:4px"':'')+'>• '+line(pmAm,'Avg evening-to-morning change (PM → AM)','Log Bedtime then next-morning Wake-Up to see your overnight change.')+'</div>');
+    sum.innerHTML=parts.join('');
+  }
 }
 
-function renderChartVarE(){
-  const data=sliceStats(getStats(),wtRangeVarE,'vare');
-  const labels=data.map(d=>{const dt=new Date(d.date+'T12:00:00');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});});
-  const deltasE=data.map(d=>d.deltaE);
-  const ctx=document.getElementById('wt-vare-chart')?.getContext('2d');
+function renderChartVarE(){ /* removed: merged into the AM → PM Daily Gain chart */ }
+
+// ── Weight Change Rate (bars): avg daily change grouped by day/week/month/year ──
+function renderChartChange(){
+  const group=wtChangeGroup||'day';
+  const series=wtChangeSeries||'both';
+  const allStats=getStats();
+  // Day-over-day change for a metric, between consecutive logged weigh-ins, keyed by date.
+  // Store the full comparison detail (from/to value + dates) so tooltips can explain each bar.
+  function dailyChangeByDate(key){
+    const byDate={}, detail={}; let last=null, lastDate=null;
+    allStats.forEach(d=>{ if(d[key]!=null){ if(last!=null){ byDate[d.date]=+(d[key]-last).toFixed(3); detail[d.date]={from:last,to:d[key],fromDate:lastDate,toDate:d.date}; } last=d[key]; lastDate=d.date; } });
+    return {byDate,detail};
+  }
+  const mC=dailyChangeByDate('morning'), eC=dailyChangeByDate('evening');
+  const mChange=mC.byDate, mDetail=mC.detail;
+  const eChange=eC.byDate, eDetail=eC.detail;
+  const data=sliceStats(allStats,wtRangeVar,'var');
+
+  // Bucket key + label per grouping.
+  function keyOf(ds){ if(group==='year') return ds.slice(0,4); if(group==='month') return ds.slice(0,7); if(group==='week'){var d=new Date(ds+'T12:00:00');var day=(d.getDay()+6)%7;d.setDate(d.getDate()-day);return d.toISOString().slice(0,10);} return ds; }
+  function labelOf(k){ if(group==='year') return k; if(group==='month'){const dm=new Date(k+'-01T12:00:00');return dm.toLocaleDateString('en-US',{month:'short',year:'2-digit'});} const dt=new Date(k+'T12:00:00'); return group==='week'?dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}):dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}); }
+  function shortDate(ds){ const dt=new Date(ds+'T12:00:00'); return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+
+  // Build buckets in visible-range order; each bucket value = average of daily changes within it.
+  // Also collect the member dates per bucket so tooltips can describe what's inside.
+  const order=[]; const mBuckets={}, eBuckets={}, mDates={}, eDates={};
+  data.forEach(d=>{
+    const k=keyOf(d.date);
+    if(order.indexOf(k)===-1) order.push(k);
+    if(mChange[d.date]!=null){ (mBuckets[k]=mBuckets[k]||[]).push(mChange[d.date]); (mDates[k]=mDates[k]||[]).push(d.date); }
+    if(eChange[d.date]!=null){ (eBuckets[k]=eBuckets[k]||[]).push(eChange[d.date]); (eDates[k]=eDates[k]||[]).push(d.date); }
+  });
+  const avg=arr=>(arr&&arr.length)?+(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(3):null;
+  const labels=order.map(labelOf);
+  const mVals=order.map(k=>avg(mBuckets[k]));
+  const eVals=order.map(k=>avg(eBuckets[k]));
+
+  // Build per-bar tooltip lines.
+  function tipLines(k, detailMap, datesMap, lbl){
+    const dates=datesMap[k]||[];
+    if(group==='day'){
+      // exactly one comparison per day bucket
+      const ds=dates[dates.length-1];
+      const det=ds?detailMap[ds]:null;
+      if(!det) return [lbl+': no change'];
+      const delta=+(det.to-det.from).toFixed(1);
+      return [
+        lbl+': '+(delta>=0?'+':'')+delta+' kg',
+        'vs '+shortDate(det.fromDate)+': '+det.from.toFixed(1)+' → '+det.to.toFixed(1)+' kg'
+      ];
+    }
+    // grouped: show count + period span (first from → last to) + avg
+    const first=detailMap[dates[0]], lastD=detailMap[dates[dates.length-1]];
+    const a=avg((datesMap[k]||[]).map(dd=>{const t=detailMap[dd];return t?+(t.to-t.from).toFixed(3):null;}).filter(x=>x!=null));
+    const out=[lbl+' avg: '+(a>=0?'+':'')+(Math.round(a*100)/100)+' kg/day'];
+    if(first&&lastD){ const net=+(lastD.to-first.from).toFixed(1); out.push('Net '+shortDate(first.fromDate)+'→'+shortDate(lastD.toDate)+': '+first.from.toFixed(1)+' → '+lastD.to.toFixed(1)+' kg ('+(net>=0?'+':'')+net+')'); out.push(dates.length+' day-to-day change'+(dates.length!==1?'s':'')); }
+    return out;
+  }
+
+  const ctx=document.getElementById('wt-change-chart')?.getContext('2d');
   if(!ctx) return;
-  if(typeof wtVareInst!=='undefined'&&wtVareInst) wtVareInst.destroy();
-  wtVareInst=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label:'Δ Bedtime',data:deltasE,backgroundColor:deltasE.map(v=>v===null?'transparent':v>0?'rgba(255,68,68,0.7)':v<0?'rgba(0,204,102,0.7)':'rgba(85,85,85,0.5)'),borderRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`Δ Bedtime (kg): ${c.parsed.y.toFixed(1)}`}}},scales:{y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#555',font:{size:10}}},x:{grid:{display:false},ticks:{color:'#555',font:{size:10},maxTicksLimit:8}}}}});
+  if(wtChangeInst) wtChangeInst.destroy();
+  const colFor=(vals,solid)=>vals.map(v=>v==null?'transparent':v<0?(solid?'rgba(0,204,102,0.8)':'rgba(0,204,102,0.55)'):v>0?(solid?'rgba(245,166,35,0.82)':'rgba(245,166,35,0.55)'):'rgba(120,120,120,0.5)');
+  const gWord = group==='day'?'daily':group==='week'?'weekly':group==='month'?'monthly':'yearly';
+  const ds=[];
+  if(series==='both'){
+    ds.push({label:'Wake-Up '+gWord+' change',data:mVals,backgroundColor:'rgba(245,166,35,0.8)',borderRadius:2,_detail:mDetail,_dates:mDates,_lbl:'Wake-Up'});
+    ds.push({label:'Bedtime '+gWord+' change',data:eVals,backgroundColor:'rgba(108,142,191,0.8)',borderRadius:2,_detail:eDetail,_dates:eDates,_lbl:'Bedtime'});
+  } else if(series==='evening'){
+    ds.push({label:'Bedtime '+gWord+' change',data:eVals,backgroundColor:colFor(eVals,true),borderRadius:2,_detail:eDetail,_dates:eDates,_lbl:'Bedtime'});
+  } else {
+    ds.push({label:'Wake-Up '+gWord+' change',data:mVals,backgroundColor:colFor(mVals,true),borderRadius:2,_detail:mDetail,_dates:mDates,_lbl:'Wake-Up'});
+  }
+  wtChangeInst=new Chart(ctx,{type:'bar',data:{labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:ds.length>1,labels:{color:'#555',font:{size:11},usePointStyle:true,pointStyle:'rect',boxWidth:14}},tooltip:{displayColors:false,callbacks:{title:items=>items.length?labelOf(order[items[0].dataIndex]):'' ,label:c=>{ if(c.parsed.y==null) return null; const dset=c.dataset; const k=order[c.dataIndex]; return tipLines(k, dset._detail, dset._dates, dset._lbl); }}}},scales:{y:{title:{display:true,text:'Avg change (kg/day)',color:'#555',font:{size:11}},grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#555',font:{size:10},callback:v=>(v>0?'+':'')+(Math.round(v*100)/100)}},x:{grid:{display:false},ticks:{color:'#555',font:{size:10},maxTicksLimit:8}}}}});
+
+  // Insight: overall net change ÷ total days across the visible range (matches the line trend),
+  // shown as kg/day plus the implied per-period total.
+  const sum=document.getElementById('wt-gap-summary');
+  if(sum && wtShiftMode==='change'){
+    const perName = group==='day'?'day':group==='week'?'week':group==='month'?'month':'year';
+    const daysPer = group==='week'?7:group==='month'?30.44:group==='year'?365.25:1;
+    function rateLine(key, lbl){
+      // Linear-regression slope (kg/day) over ALL weigh-ins in the visible range.
+      // x = days since the first weigh-in, y = weight. Uses every point (robust to noise),
+      // and matches the Weight Trend projection's method.
+      const pts=data.filter(d=>d[key]!=null);
+      if(pts.length<2) return null;
+      const t0=new Date(pts[0].date+'T12:00:00').getTime();
+      const xs=pts.map(p=>(new Date(p.date+'T12:00:00').getTime()-t0)/86400000);
+      const ys=pts.map(p=>p[key]);
+      const n=xs.length; let sx=0,sy=0,sxx=0,sxy=0;
+      for(let i=0;i<n;i++){ sx+=xs[i]; sy+=ys[i]; sxx+=xs[i]*xs[i]; sxy+=xs[i]*ys[i]; }
+      const denom=(n*sxx - sx*sx);
+      if(denom===0) return null;
+      const slope=(n*sxy - sx*sy)/denom; // kg per day
+      const perDay=(slope>=0?'+':'')+(Math.round(slope*100)/100);
+      const r2=v=>Math.round(v*100)/100; // tidy sums for display
+      const dayCalc=[
+        'Linear-regression slope through all '+n+' '+lbl+' weigh-ins',
+        '(x = days since first weigh-in, y = kg):',
+        '&nbsp;',
+        'slope = [ n·Σxy − Σx·Σy ] / [ n·Σx² − (Σx)² ]',
+        'slope = [ '+n+'·'+r2(sxy)+' − '+r2(sx)+'·'+r2(sy)+' ] / [ '+n+'·'+r2(sxx)+' − '+r2(sx)+'² ]',
+        'slope = '+r2(n*sxy - sx*sy)+' / '+r2(denom),
+        'slope = '+(slope>=0?'+':'')+(Math.round(slope*1000)/1000)+' kg/day'
+      ];
+      let txt='• '+lbl+': '+_calcTip(perDay+' kg/day', dayCalc);
+      if(group!=='day'){
+        const total=slope*daysPer;
+        const perCalc=[
+          'Per-'+perName+' total = daily slope × days per '+perName,
+          '&nbsp;',
+          '= '+(slope>=0?'+':'')+(Math.round(slope*1000)/1000)+' kg/day × '+daysPer+' days',
+          '= '+(total>=0?'+':'')+(Math.round(total*100)/100)+' kg/'+perName
+        ];
+        txt+=' (≈ '+_calcTip((total>=0?'+':'')+(Math.round(total*100)/100)+' kg/'+perName, perCalc)+')';
+      }
+      return '<div'+(lbl==='Bedtime'?' style="margin-top:4px"':'')+'>'+txt+'</div>';
+    }
+    const lines=[];
+    const showM=(series==='both'||series==='morning'), showE=(series==='both'||series==='evening');
+    if(showM){ const l=rateLine('morning','Wake-Up'); if(l) lines.push(l); }
+    if(showE){ const l=rateLine('evening','Bedtime'); if(l) lines.push(l); }
+    sum.innerHTML = lines.length ? lines.join('') : '<span style="color:var(--text3)">Log at least two weigh-ins in this range to see your change rate.</span>';
+  }
 }
+
+function _applyMainChartMode(){
+  // Merged into a single Weight Trend chart; always keep it visible.
+  var trendC=document.getElementById('wt-chart');
+  if(trendC && trendC.parentElement) trendC.parentElement.style.display='';
+}
+function setMainChartMode(mode){ renderChartTrend(); }
+function setAvgWindow(v){
+  wtAvgWindow = Math.max(2, Math.min(90, parseInt(v,10)||7));
+  renderChartAvg();
+}
+function setAvgSeries(v){ wtAvgSeries = (v==='morning'||v==='evening')?v:'both'; renderChartAvg(); }
+function setAvgGroup(v){ wtAvgGroup = (v==='week'||v==='month'||v==='year')?v:'day'; renderChartAvg(); }
+function _applyTrendSmoothVisibility(){
+  var wrap=document.getElementById('wt-trend-smooth-wrap');
+  if(wrap) wrap.style.display = (wtTrendGroup==='day')?'flex':'none';
+}
+function setTrendSeries(v){ wtTrendSeries = (v==='morning'||v==='evening')?v:'both'; renderChartTrend(); }
+function setTrendGroup(v){ wtTrendGroup = (v==='week'||v==='month'||v==='year')?v:'day'; _applyTrendSmoothVisibility(); renderChartTrend(); }
+function setTrendSmooth(v, commit){
+  var raw = (v==='' || v==null) ? NaN : Number(v);
+  var n = Math.floor(raw);
+  var valid = Number.isFinite(raw) && n>=1 && n<=90 && n===raw; // whole number in [1,90]
+  if(valid){
+    wtTrendSmooth = n;
+    renderChartTrend();
+    return;
+  }
+  // Invalid value.
+  if(commit){
+    // User committed (blur/Enter) an invalid value: tell them why and restore the last valid one.
+    if(Number.isFinite(raw) && raw<1){
+      toast('“Avg over” must be at least 1 day — 0 or negative values aren’t allowed.');
+    } else if(Number.isFinite(raw) && raw>90){
+      toast('“Avg over” can be at most 90 days.');
+    } else {
+      toast('Please enter a whole number of days (1–90).');
+    }
+    var inp=document.getElementById('wt-trend-smooth');
+    if(inp) inp.value = wtTrendSmooth; // restore last valid
+    renderChartTrend();
+  }
+  // While typing (not commit): do nothing, let them keep editing.
+}
+
+function _applyShiftChartMode(){
+  var shiftC=document.getElementById('wt-var-chart');
+  var changeC=document.getElementById('wt-change-chart');
+  if(shiftC && shiftC.parentElement) shiftC.parentElement.style.display = (wtShiftMode==='change')?'none':'';
+  if(changeC && changeC.parentElement) changeC.parentElement.style.display = (wtShiftMode==='change')?'':'none';
+  var winWrap=document.getElementById('wt-change-window-wrap');
+  if(winWrap) winWrap.style.display = (wtShiftMode==='change')?'flex':'none';
+  var shiftOpts=document.getElementById('wt-shift-opts-wrap');
+  if(shiftOpts) shiftOpts.style.display = (wtShiftMode==='change')?'none':'flex';
+}
+function setShiftChartMode(mode){
+  wtShiftMode = (mode==='change')?'change':'shift';
+  _applyShiftChartMode();
+  if(wtShiftMode==='change') renderChartChange(); else renderChartVar();
+}
+function setChangeGroup(v){ wtChangeGroup = (v==='week'||v==='month'||v==='year')?v:'day'; renderChartChange(); }
+function setChangeSeries(v){ wtChangeSeries = (v==='evening'||v==='both')?v:'morning'; renderChartChange(); }
+function setShiftGroup(v){ wtShiftGroup = (v==='week'||v==='month'||v==='year')?v:'day'; renderChartVar(); }
+function setShiftSeries(v){ wtShiftSeries = (v==='ampm'||v==='pmam')?v:'both'; renderChartVar(); }
 
 function renderWeightCharts(){
+  _applyMainChartMode();
+  _applyShiftChartMode();
   renderChartTrend();
   renderChartAvg();
   renderChartVar();
+  renderChartChange();
   renderChartVarE();
 }
 
 function sortWeightTable(col){
   if(wtSortCol===col) wtSortDir=wtSortDir==='asc'?'desc':'asc';
   else{wtSortCol=col;wtSortDir='desc';}
+  wtLogPage=0;
   // Update arrow indicators
   document.querySelectorAll('.sort-arrow').forEach(el=>{el.classList.remove('active');el.textContent='↕';});
   const arrow=document.getElementById(`wt-sa-${col}`);
@@ -6485,14 +7115,17 @@ function applyWeightTableFilters(){
   wtFilterFrom=from;
   wtFilterTo=to;
   wtFilterNotes=document.getElementById('wt-filter-notes').value.toLowerCase()||'';
+  wtFilterHas=(document.getElementById('wt-filter-has')||{}).value||'all';
+  wtLogPage=0;
   renderWeightTable(computeWeightStats());
 }
 
 function clearWeightTableFilters(){
   const fromEl=document.getElementById('wt-filter-from');
   const toEl=document.getElementById('wt-filter-to');
-  wtFilterFrom='';wtFilterTo='';wtFilterNotes='';
+  wtFilterFrom='';wtFilterTo='';wtFilterNotes='';wtFilterHas='all';
   wtSortCol='date';wtSortDir='desc';
+  wtLogPage=0;
   if(fromEl){fromEl.value='';fromEl.classList.remove('cd-active');fromEl.removeAttribute('max');}
   if(toEl){toEl.value='';toEl.classList.remove('cd-active');toEl.removeAttribute('min');}
   // Re-apply data bounds
@@ -6502,19 +7135,51 @@ function clearWeightTableFilters(){
     if(toEl){toEl.min=sorted[0];toEl.max=sorted[sorted.length-1];}
   }
   document.getElementById('wt-filter-notes').value='';
+  const hasEl=document.getElementById('wt-filter-has'); if(hasEl) hasEl.value='all';
   document.querySelectorAll('.sort-arrow').forEach(el=>{el.classList.remove('active');el.textContent='↕';});
   const a=document.getElementById('wt-sa-date');if(a){a.classList.add('active');a.textContent='↓';}
   renderWeightTable(computeWeightStats());
 }
 
+function _wtAllDays(stats){
+  // Build a full gapless list from the earliest logged date to today.
+  // Days with no entry get a placeholder row (morning/evening null, no actions).
+  if(!stats.length) return [];
+  const logged = {}; stats.forEach(r=>{ logged[r.date]=r; });
+  const first = stats.reduce((a,r)=>r.date<a?r.date:a, stats[0].date);
+  const today = localDateStr();
+  const rows = [];
+  let cursor = new Date(first+'T12:00:00');
+  const end   = new Date(today+'T12:00:00');
+  while(cursor<=end){
+    const ds = cursor.toISOString().slice(0,10);
+    rows.push(logged[ds] || {date:ds, morning:null, evening:null, deltaM:null, deltaE:null, deltaAmPm:null, avg7:null, avg7evening:null, notes:''});
+    cursor.setDate(cursor.getDate()+1);
+  }
+  return rows;
+}
+
+// Has-value filter predicate for the Weight Log.
+function _wtHasPass(r){
+  var mode = (typeof wtFilterHas!=='undefined') ? wtFilterHas : 'all';
+  var hasM = r.morning!=null, hasE = r.evening!=null;
+  switch(mode){
+    case 'morning': return hasM;
+    case 'evening': return hasE;
+    case 'both':    return hasM && hasE;
+    case 'either':  return hasM || hasE;
+    default:        return true; // 'all'
+  }
+}
+
 function renderWeightTable(stats){
-  // Filter — operates on display only, does not affect stats used for calculations
-  let rows=[...stats];
+  // Build gapless full list, then apply filters and sort.
+  let rows = _wtAllDays(stats);
   if(wtFilterFrom) rows=rows.filter(r=>r.date>=wtFilterFrom);
   if(wtFilterTo)   rows=rows.filter(r=>r.date<=wtFilterTo);
   if(wtFilterNotes) rows=rows.filter(r=>(r.notes||'').toLowerCase().includes(wtFilterNotes));
+  rows=rows.filter(_wtHasPass);
 
-  // Sort
   rows.sort((a,b)=>{
     let av=a[wtSortCol]??null, bv=b[wtSortCol]??null;
     if(wtSortCol==='date'){av=a.date;bv=b.date;}
@@ -6525,9 +7190,22 @@ function renderWeightTable(stats){
     return wtSortDir==='asc'?cmp:-cmp;
   });
 
+  const total = rows.length;
+  const size  = wtLogPageSize; // 0 = All
+  const pageCount = size ? Math.max(1, Math.ceil(total/size)) : 1;
+  if(wtLogPage > pageCount-1) wtLogPage = pageCount-1;
+  if(wtLogPage < 0) wtLogPage = 0;
+  const start = size ? wtLogPage*size : 0;
+  const page  = size ? rows.slice(start, start+size) : rows;
+
   const body=document.getElementById('wt-log-body');
-  if(!rows.length){body.innerHTML=`<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No weigh-ins recorded yet. Start tracking to see your progress here.</td></tr>`;return;}
-  body.innerHTML=rows.map(r=>{
+  if(!rows.length){
+    body.innerHTML=`<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No weigh-ins recorded yet. Start tracking to see your progress here.</td></tr>`;
+    _wtRenderFooter(0,0,0,0); return;
+  }
+
+  const hasEntry = r => r.morning!=null || r.evening!=null;
+  body.innerHTML=page.map(r=>{
     const fmt=v=>v!=null?parseFloat(v).toFixed(1):'—';
     const dc=v=>v===null?'—':v>0?`<span class="val-pos">+${parseFloat(v).toFixed(1)}</span>`:v<0?`<span class="val-neg">${parseFloat(v).toFixed(1)}</span>`:`<span class="val-neu">0.0</span>`;
     const ampm=r.deltaAmPm;
@@ -6538,7 +7216,13 @@ function renderWeightTable(stats){
     const year=d.getFullYear();
     const weekday=d.toLocaleDateString('en-US',{weekday:'short'});
     const dateStr=`${weekday}, ${month} ${day}, ${year}`;
-    return `<tr>
+    // Gap rows (no entry): muted date, all dashes, no actions.
+    const isGap = !hasEntry(r);
+    const rowStyle = isGap ? ' style="opacity:.45"' : '';
+    const actions = isGap ? '<td></td><td></td>' :
+      `<td><button class="btn-danger" data-date="${r.date}" onclick="deleteWeight(this)">×</button></td>`+
+      `<td><button style="background:transparent;border:none;cursor:pointer;color:var(--text3);padding:4px;display:inline-flex;align-items:center" data-date="${r.date}" onclick="editWeight(this)" title="Edit record"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button></td>`;
+    return `<tr${rowStyle}>
       <td>${dateStr}</td>
       <td>${fmt(r.morning)}</td>
       <td>${fmt(r.evening)}</td>
@@ -6548,10 +7232,47 @@ function renderWeightTable(stats){
       <td style="font-family:var(--mono);font-size:11px;color:#f5a623">${r.avg7!=null?parseFloat(r.avg7).toFixed(1):'—'}</td>
       <td style="font-family:var(--mono);font-size:11px;color:#6c8ebf">${r.avg7evening!=null?parseFloat(r.avg7evening).toFixed(1):'—'}</td>
       <td class="td-notes">${r.notes||''}</td>
-      <td><button class="btn-danger" data-date="${r.date}" onclick="deleteWeight(this)">×</button></td>
-      <td><button style="background:transparent;border:none;cursor:pointer;color:var(--text3);padding:4px;display:inline-flex;align-items:center" data-date="${r.date}" onclick="editWeight(this)" title="Edit record"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button></td>
+      ${actions}
     </tr>`;
   }).join('');
+
+  // Scroll to top of the log on page change.
+  const scroll = document.getElementById('wt-log-scroll');
+  if(scroll) scroll.scrollTop = 0;
+
+  _wtRenderFooter(total, start, Math.min(start+page.length, total), pageCount);
+}
+
+function _wtRenderFooter(total, from1, to1, pageCount){
+  const footer = document.getElementById('wt-log-footer'); if(!footer) return;
+  if(!total){ footer.innerHTML=''; return; }
+  const size = wtLogPageSize;
+  const sizeOpts = [10,25,50,100,0].map(v=>`<option value="${v}"${v===size?' selected':''}>${v||'All'}</option>`).join('');
+  const page = wtLogPage;
+  const showNav = size && pageCount>1;
+  footer.innerHTML=
+    '<div class="s-recent-size">'+
+      '<span class="s-recent-size-lbl">Show</span>'+
+      '<select class="s-recent-size-sel" onchange="wtLogSetSize(this.value)">'+sizeOpts+'</select>'+
+      '<span class="s-recent-size-lbl">per page</span>'+
+    '</div>'+
+    `<span style="font-size:12px;color:var(--text3);font-family:var(--mono)">${from1+1}–${to1} of ${total}</span>`+
+    (showNav ?
+      `<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)">
+        <button onclick="wtLogNav(-1)" style="background:none;border:none;cursor:pointer;color:${page>0?'var(--text2)':'var(--text3)'};padding:2px 6px;font-size:13px" ${page===0?'disabled':''}>← Prev</button>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">Page ${page+1} / ${pageCount}</span>
+        <button onclick="wtLogNav(1)" style="background:none;border:none;cursor:pointer;color:${page<pageCount-1?'var(--text2)':'var(--text3)'};padding:2px 6px;font-size:13px" ${page>=pageCount-1?'disabled':''}>Next →</button>
+      </div>` : '');
+}
+
+function wtLogSetSize(v){
+  wtLogPageSize = parseInt(v,10)||0;
+  wtLogPage = 0;
+  renderWeightTable(computeWeightStats());
+}
+function wtLogNav(dir){
+  wtLogPage += dir;
+  renderWeightTable(computeWeightStats());
 }
 
 function editWeight(btn){
@@ -6718,7 +7439,8 @@ function hideStreakTip(){
   const tip=document.getElementById('streak-float-tip');
   if(tip) tip.style.display='none';
 }
-function showKpiTip(e, text){
+function showKpiTip(e, text, opts){
+  opts=opts||{};
   let tip=document.getElementById('kpi-float-tip');
   if(!tip){
     tip=document.createElement('div');
@@ -6734,10 +7456,21 @@ function showKpiTip(e, text){
     document.body.appendChild(tip);
   }
   document.getElementById('kpi-float-tip-text').innerHTML=text;
+  // Width: default fixed 220px (shared style), or auto-size to content when requested.
+  if(opts.autoWidth){
+    tip.style.width='max-content';
+    tip.style.maxWidth=Math.min(opts.maxWidth||520, window.innerWidth-16)+'px';
+    tip.style.whiteSpace='normal';
+  } else {
+    tip.style.width='220px';
+    tip.style.maxWidth='';
+    tip.style.whiteSpace='';
+  }
   tip.style.left='-9999px';
   tip.style.top='-9999px';
   tip.style.display='block';
-  const tipW=220, margin=8;
+  const margin=8;
+  const tipW=tip.offsetWidth; // measure actual rendered width (works for fixed and auto)
   const tipH=tip.offsetHeight;
   const r=e.target.getBoundingClientRect();
   // Center tooltip over the number element itself
@@ -9648,11 +10381,6 @@ function sportRenderHeatmap(){
   else if(from){ start=new Date(from+'T12:00:00'); end=new Date(localDateStr()+'T12:00:00'); if(end<start) end=new Date(start); }
   else if(to){ end=new Date(to+'T12:00:00'); start=new Date(end); start.setFullYear(start.getFullYear()-1); start.setDate(start.getDate()+1); }
   else { end=new Date(localDateStr()+'T12:00:00'); start=new Date(end); start.setFullYear(start.getFullYear()-1); start.setDate(start.getDate()+1); }
-
-  // Cap the displayed range to at most the most recent 12 calendar months, anchored to the
-  // latest (end) date. e.g. a Dec-2024 → Dec-2026 filter collapses to Jan-2026 … Dec-2026.
-  var earliest12 = new Date(end.getFullYear(), end.getMonth()-11, 1);
-  if(start < earliest12) start = earliest12;
 
   // aggregate per day; track per-sport minutes & sessions for the breakdown tooltip
   var byDay={};
